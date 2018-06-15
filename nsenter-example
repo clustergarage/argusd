@@ -1,0 +1,4 @@
+docker run -d nginx
+PID=$(docker inspect -f {{.State.Pid}} 3afeeddd640e)
+sudo nsenter --target $PID --mount
+ls /etc #should see nginx config
