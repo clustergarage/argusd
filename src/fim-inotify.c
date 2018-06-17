@@ -104,6 +104,8 @@ int main(int argc, char *argv[]) {
   // join namespace
   if (setns(fd, 0) == -1) {
     errExit("setns");
+  } else {
+    close(fd);
   }
 
   // -- START THE INOTIFY WATCHER
