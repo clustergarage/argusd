@@ -7,6 +7,6 @@ RUN apt-get update && \
 WORKDIR /opt/fim
 COPY . /opt/fim
 
-RUN gcc -o bin/fim src/fim.c
+RUN gcc -o bin/fim-inotify src/fim-inotify.c
 
-ENTRYPOINT ["/opt/fim/bin/fim"]
+ENTRYPOINT ["/opt/fim/bin/fim-inotify"]
