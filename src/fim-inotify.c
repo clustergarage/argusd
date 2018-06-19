@@ -52,31 +52,32 @@ static void handle_events(int fd, int *wd, int argc, char *argv[]) {
 
       // print event type
       if (event->mask & IN_OPEN) {
-        printf("IN_OPEN: ");
+        fprintf(stdout, "IN_OPEN: ");
       }
       if (event->mask & IN_MODIFY) {
-        printf("IN_MODIFY: ");
+        fprintf(stdout, "IN_MODIFY: ");
       }
 
       // print the name of the watched directory
       for (i = 1; i < argc; ++i) {
         if (wd[i] == event->wd) {
-          printf("%s/", argv[i]);
+          fprintf(stdout, "%s/", argv[i]);
           break;
         }
       }
 
       // print the name of the file
       if (event->len) {
-        printf("%s", event->name);
+        fprintf(stdout, "%s", event->name);
       }
 
       // print the type of filesystem object
       if (event->mask & IN_ISDIR) {
-        printf(" [directory]\n");
+        fprintf(stdout, " [directory]\n");
       } else {
-        printf(" [file]\n");
+        fprintf(stdout, " [file]\n");
       }
+      fflush(stdout);
     }
   }
 }
@@ -86,7 +87,7 @@ int main(int argc, char *argv[]) {
   int fdns, fdin, i, poll_num;
   int *wd;
   nfds_t nfds;
-  struct pollfd fds[2];
+  struct pollfd fds[1];
 
   if (argc < 3) {
     fprintf(stderr, "%s </proc/PID/ns/NAMESPACE> <paths...>\n", argv[0]);
@@ -111,7 +112,7 @@ int main(int argc, char *argv[]) {
 
   // -- START THE INOTIFY WATCHER
 
-  printf("Press ENTER key to terminate.\n");
+  //printf("Press ENTER key to terminate.\n");
 
   // create the file descriptor for accessing the inotify API
   fdin = inotify_init1(IN_NONBLOCK);
@@ -141,14 +142,16 @@ int main(int argc, char *argv[]) {
   // prepare for polling
   nfds = 2;
   // console input
-  fds[0].fd = STDIN_FILENO;
-  fds[0].events = POLLIN;
+  //fds[0].fd = STDIN_FILENO;
+  //fds[0].events = POLLIN;
   // inotify input
-  fds[1].fd = fdin;
-  fds[1].events = POLLIN;
+  fds[0].fd = fdin;
+  fds[0].events = POLLIN;
 
   // wait for events and/or terminal input
-  printf("Listening for events.\n");
+  fprintf(stdout, "Listening for events.\n");
+  fflush(stdout);
+
   while (1) {
     poll_num = poll(fds, nfds, -1);
     if (poll_num == -1) {
@@ -159,6 +162,7 @@ int main(int argc, char *argv[]) {
     }
 
     if (poll_num > 0) {
+      /*
       if (fds[0].revents & POLLIN) {
         // console input is available; empty stdin and quit
         while (read(STDIN_FILENO, &buf, 1) > 0 && buf != '\n') {
@@ -166,15 +170,17 @@ int main(int argc, char *argv[]) {
         }
         break;
       }
+      */
 
-      if (fds[1].revents & POLLIN) {
+      if (fds[0].revents & POLLIN) {
         // inotify events are available
         handle_events(fdin, wd, argc, argv);
       }
     }
   }
 
-  printf("Listening for events stopped.\n");
+  fprintf(stdout, "Listening for events stopped.\n");
+  fflush(stdout);
 
   // close inotify file descriptor
   close(fdin);
