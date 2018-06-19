@@ -3,13 +3,13 @@
 ## Building
 
 ```
-docker build -t fim-inotify .
+docker build -t clustergarage/fim-inotify .
 ```
 
 ## Running
 
 ```
-docker run --privileged -it --rm --pid=host fim-inotify /proc/$PID/ns/$NAMESPACE [paths...]
+docker run --privileged -it --rm --pid=host clustergarage/fim-inotify /proc/$PID/ns/$NAMESPACE [paths...]
 ```
 
 ### Example Run
@@ -20,7 +20,7 @@ $ ./bin/get_container_pids run=nginx
 1234
 
 # watch for events
-$ docker run --privileged -it --rm --pid=host fim-inotify /proc/1234/ns/mnt /var/log/nginx
+$ docker run --privileged -it --rm --pid=host clustergarage/fim-inotify /proc/1234/ns/mnt /var/log/nginx
 Press ENTER key to terminate.
 Listening for events.
 IN_OPEN: /proc/1234/ns/mnt/foo.log [file]

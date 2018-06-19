@@ -83,7 +83,7 @@ static void handle_events(int fd, int *wd, int argc, char *argv[]) {
 
 int main(int argc, char *argv[]) {
   char buf;
-  int fd, i, poll_num;
+  int fdns, fdin, i, poll_num;
   int *wd;
   nfds_t nfds;
   struct pollfd fds[2];
@@ -96,25 +96,26 @@ int main(int argc, char *argv[]) {
   // -- JOIN THE NAMESPACE
 
   // get file descriptor for namespace
-  fd = open(argv[1], O_RDONLY);
-  if (fd == -1) {
+  fdns = open(argv[1], O_RDONLY);
+  if (fdns == -1) {
     errExit("open");
   }
 
   // join namespace
-  if (setns(fd, 0) == -1) {
+  if (setns(fdns, 0) == -1) {
     errExit("setns");
-  } else {
-    close(fd);
   }
+
+  // close namespace file descriptor
+  close(fdns);
 
   // -- START THE INOTIFY WATCHER
 
   printf("Press ENTER key to terminate.\n");
 
   // create the file descriptor for accessing the inotify API
-  fd = inotify_init1(IN_NONBLOCK);
-  if (fd == -1) {
+  fdin = inotify_init1(IN_NONBLOCK);
+  if (fdin == -1) {
     errExit("inotify_init1");
   }
 
@@ -130,7 +131,7 @@ int main(int argc, char *argv[]) {
    * - file was modified
    */
   for (i = 1; i < argc; i++) {
-    wd[i] = inotify_add_watch(fd, argv[2], IN_OPEN | IN_MODIFY);
+    wd[i] = inotify_add_watch(fdin, argv[2], IN_OPEN | IN_MODIFY);
     if (wd[i] == -1) {
       fprintf(stderr, "Cannot watch '%s'\n", argv[i]);
       errExit("inotify_add_watch");
@@ -143,7 +144,7 @@ int main(int argc, char *argv[]) {
   fds[0].fd = STDIN_FILENO;
   fds[0].events = POLLIN;
   // inotify input
-  fds[1].fd = fd;
+  fds[1].fd = fdin;
   fds[1].events = POLLIN;
 
   // wait for events and/or terminal input
@@ -168,7 +169,7 @@ int main(int argc, char *argv[]) {
 
       if (fds[1].revents & POLLIN) {
         // inotify events are available
-        handle_events(fd, wd, argc, argv);
+        handle_events(fdin, wd, argc, argv);
       }
     }
   }
@@ -176,7 +177,7 @@ int main(int argc, char *argv[]) {
   printf("Listening for events stopped.\n");
 
   // close inotify file descriptor
-  close(fd);
+  close(fdin);
   free(wd);
 
   exit(EXIT_SUCCESS);
