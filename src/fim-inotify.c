@@ -10,44 +10,27 @@
 #include <sys/inotify.h>
 #include <unistd.h>
 
-#define __attribute__(_arg_)
+#include "common.h"
 
-#define USAGE_HEADER    "\nUsage:\n"
-#define USAGE_OPTIONS   "\nOptions:\n"
-#define USAGE_SEPARATOR "\n"
-#define USAGE_HELP_OPTIONS(marg_dsc)     \
-	"%-" #marg_dsc "s%s\n"                 \
-	"%-" #marg_dsc "s%s\n",                \
-	" -h, --help",    "display this help", \
-	" -v, --version", "display version"
-#define USAGE_MAN_TAIL(_man) "\nFor more details see %s.\n", _man
-#define UTIL_LINUX_VERSION "%s from v1.0\n", program_invocation_short_name/*, PACKAGE_STRING*/
-
-#define errtryhelp(eval) __extension__ ({ \
-	fprintf(stderr, "Try '%s --help' for more information.\n", \
-		program_invocation_short_name);                          \
-	exit(eval); \
-})
-
-#define errexit(msg) do { \
-	perror(msg);            \
-	exit(EXIT_FAILURE);     \
-} while (0)
+static pid_t target_pid = -1;
+static char *target_ns = NULL;
+static char *target_paths[32] = {NULL};
+static int tpc = 0;
 
 static void __attribute__((__noreturn__)) usage(void) {
 	FILE *out = stdout;
 
 	fputs(USAGE_HEADER, out);
-	fprintf(out, " %s [options] [<program> [<argument>...]]\n", program_invocation_short_name);
+	fprintf(out, " %s [options]\n", program_invocation_short_name);
 
 	fputs(USAGE_SEPARATOR, out);
 	fputs("Run a program with namespaces of other processes.\n", out);
 
 	fputs(USAGE_OPTIONS, out);
-	fputs(" -p, --pid <pid>        foo bar baz\n", out);
-	fputs(" -n, --ns <namespace>   foo bar baz\n", out);
-	fputs(" -t, --paths <paths...> foo bar baz\n", out);
-	fputs(" -f, --format <format>  foo bar baz\n", out);
+	fputs(" -p, --pid <pid>        target PID to watch\n", out);
+	fputs(" -n, --ns <namespace>   target namespace [ipc|net|mnt|pid|user|uts]\n", out);
+	fputs(" -t, --paths <paths...> target watch path(s)\n", out);
+	fputs(" -f, --format <format>  [optional] log format\n", out);
 
 	fputs(USAGE_SEPARATOR, out);
 	printf(USAGE_HELP_OPTIONS(24));
@@ -56,22 +39,56 @@ static void __attribute__((__noreturn__)) usage(void) {
 	exit(EXIT_SUCCESS);
 }
 
-unsigned long strtoul_or_err(const char *str, const char *errmesg) {
-	unsigned long num;
-	char *end = NULL;
+void parseArgs(int argc, char *argv[]) {
+	enum { OPT_PRESERVE_CRED = CHAR_MAX + 1 };
 
-	errno = 0;
-	if (str == NULL || *str == '\0') {
-		goto err;
-	}
-	num = strtoul(str, &end, 10);
+	static const struct option longopts[] = {
+		{ "help", no_argument, NULL, 'h' },
+		{ "version", no_argument, NULL, 'v'},
+		{ "pid", required_argument, NULL, 'p' },
+		{ "ns", required_argument, NULL, 'n' },
+		{ "paths", required_argument, NULL, 't'},
+		{ "format", optional_argument, NULL, 'f' },
+		{ NULL, 0, NULL, 0 }
+	};
 
-	if (errno || str == end || (end && *end)) {
-		goto err;
+  int c;
+	while ((c = getopt_long(argc, argv, "+hvp:n:t:f::", longopts, NULL)) != -1) {
+		switch (c) {
+			case 'h':
+				usage();
+			case 'v':
+				printf(UTIL_LINUX_VERSION);
+				exit(EXIT_SUCCESS);
+			case 'p':
+				target_pid = strtoul_or_err(optarg, "failed to parse PID");
+				break;
+			case 'n':
+				target_ns = optarg;
+				break;
+			case 't':
+				target_paths[tpc++] = optarg;
+				break;
+			case 'f':
+				if (optarg) {
+					printf("optarg found: %s", optarg);
+				} else {
+				}
+				break;
+			default:
+				errtryhelp(EXIT_FAILURE);
+		}
 	}
-	return num;
-err:
-	errexit(errmesg);
+
+	if (target_pid == -1) {
+		errexit("no target PID specified for --pid");
+	}
+	if (target_ns == NULL || *target_ns == '\0') {
+		errexit("no target namespace specified for --ns");
+	}
+	if (tpc == 0) {
+		errexit("no target paths specified for --paths");
+	}
 }
 
 /**
@@ -148,62 +165,7 @@ static void handle_events(int fd, int *wd, int pathc, char *paths[]) {
 }
 
 int main(int argc, char *argv[]) {
-	enum { OPT_PRESERVE_CRED = CHAR_MAX + 1 };
-
-	static const struct option longopts[] = {
-		{ "help", no_argument, NULL, 'h' },
-		{ "version", no_argument, NULL, 'v'},
-		{ "pid", required_argument, NULL, 'p' },
-		{ "ns", required_argument, NULL, 'n' },
-		{ "paths", required_argument, NULL, 't'},
-		{ "format", optional_argument, NULL, 'f' },
-		{ NULL, 0, NULL, 0 }
-	};
-
-	pid_t target_pid = -1;
-  char *target_ns = NULL;
-	char *target_paths[32] = {NULL};
-	int tpc = 0;
-	int c;
-
-  // -- PARSE ARGUMENTS
-
-	while ((c = getopt_long(argc, argv, "+hvp:n:t:f::", longopts, NULL)) != -1) {
-		switch (c) {
-			case 'h':
-				usage();
-			case 'v':
-				printf(UTIL_LINUX_VERSION);
-				return EXIT_SUCCESS;
-			case 'p':
-				target_pid = strtoul_or_err(optarg, "failed to parse PID");
-				break;
-			case 'n':
-				target_ns = optarg;
-				break;
-			case 't':
-				target_paths[tpc++] = optarg;
-				break;
-			case 'f':
-				if (optarg) {
-					printf("optarg found: %s", optarg);
-				} else {
-				}
-				break;
-			default:
-				errtryhelp(EXIT_FAILURE);
-		}
-	}
-
-	if (target_pid == -1) {
-		errexit("no target PID specified for --pid");
-	}
-	if (target_ns == NULL || *target_ns == '\0') {
-		errexit("no target namespace specified for --ns");
-	}
-	if (tpc == 0) {
-		errexit("no target paths specified for --paths");
-	}
+  parseArgs(argc, argv);
 
 	char buf, file[1024];
 	int fdns, fdin, i, poll_num;
@@ -247,7 +209,6 @@ int main(int argc, char *argv[]) {
    * - file was opened
    * - file was modified
    */
-	// @TODO: split on ; on paths argument, and loop for multi-directory watchers
   for (i = 0; i < tpc; i++) {
 		// @TODO: make events configurable
     wd[i] = inotify_add_watch(fdin, target_paths[i], IN_OPEN | IN_MODIFY);
