@@ -7,6 +7,7 @@
 #include <sched.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/inotify.h>
 #include <unistd.h>
 
@@ -15,22 +16,32 @@
 static pid_t target_pid = -1;
 static char *target_ns = NULL;
 static char *target_paths[32] = {NULL};
-static int tpc = 0;
+static unsigned int target_pathc = 0;
+static unsigned int target_events = 0x0;
 
 static void __attribute__((__noreturn__)) usage(void) {
 	FILE *out = stdout;
 
 	fputs(USAGE_HEADER, out);
-	fprintf(out, " %s [options]\n", program_invocation_short_name);
+	fprintf(out, " %s -p<pid> -n<namespace> -t<path>... [-e<event>...] [-f<format>]\n", program_invocation_short_name);
 
 	fputs(USAGE_SEPARATOR, out);
-	fputs("Run a program with namespaces of other processes.\n", out);
+	fputs("Watch for namespace events within paths of a target PID.\n", out);
 
 	fputs(USAGE_OPTIONS, out);
 	fputs(" -p, --pid <pid>        target PID to watch\n", out);
-	fputs(" -n, --ns <namespace>   target namespace [ipc|net|mnt|pid|user|uts]\n", out);
-	fputs(" -t, --paths <paths...> target watch path(s)\n", out);
-	fputs(" -f, --format <format>  [optional] log format\n", out);
+	fputs(" -n, --ns <namespace>   target namespace (ipc|net|mnt|pid|user|uts)\n", out);
+	fputs(" -t, --path <path>      target watch path(s)\n", out);
+	fputs(" -e, --event <event>    event(s) to watch (access|modify|attrib|open|close|move|create|delete|all)\n", out);
+	fputs(" -f, --format <format>  log format\n", out);
+
+	// @TODO: file|dir|only_dir
+  /*
+  #define IN_ONLYDIR				0x01000000	// only watch the path if it is a directory
+  #define IN_DONT_FOLLOW		0x02000000	// don't follow a sym link
+  #define IN_EXCL_UNLINK		0x04000000	// exclude events on unlinked objects
+  #define IN_ONESHOT				0x80000000	// only send event once
+  */
 
 	fputs(USAGE_SEPARATOR, out);
 	printf(USAGE_HELP_OPTIONS(24));
@@ -47,13 +58,14 @@ void parseArgs(int argc, char *argv[]) {
 		{ "version", no_argument, NULL, 'v'},
 		{ "pid", required_argument, NULL, 'p' },
 		{ "ns", required_argument, NULL, 'n' },
-		{ "paths", required_argument, NULL, 't'},
+		{ "path", required_argument, NULL, 't'},
+		{ "event", optional_argument, NULL, 'e'},
 		{ "format", optional_argument, NULL, 'f' },
 		{ NULL, 0, NULL, 0 }
 	};
 
   int c;
-	while ((c = getopt_long(argc, argv, "+hvp:n:t:f::", longopts, NULL)) != -1) {
+	while ((c = getopt_long(argc, argv, "+hvp:n:t:e::f::", longopts, NULL)) != EOF) {
 		switch (c) {
 			case 'h':
 				usage();
@@ -67,7 +79,20 @@ void parseArgs(int argc, char *argv[]) {
 				target_ns = optarg;
 				break;
 			case 't':
-				target_paths[tpc++] = optarg;
+				target_paths[target_pathc++] = optarg;
+				break;
+			case 'e':
+				if (optarg) {
+					if (strcmp(optarg, "access") == 0)      target_events |= IN_ACCESS;
+					else if (strcmp(optarg, "modify") == 0) target_events |= IN_MODIFY;
+					else if (strcmp(optarg, "attrib") == 0) target_events |= IN_ATTRIB;
+					else if (strcmp(optarg, "open") == 0)   target_events |= IN_OPEN;
+					else if (strcmp(optarg, "close") == 0)  target_events |= IN_CLOSE;
+					else if (strcmp(optarg, "move") == 0)   target_events |= IN_MOVE;
+					else if (strcmp(optarg, "create") == 0) target_events |= IN_CREATE;
+					else if (strcmp(optarg, "delete") == 0) target_events |= IN_DELETE;
+					else if (strcmp(optarg, "all") == 0)    target_events |= IN_ALL_EVENTS;
+				}
 				break;
 			case 'f':
 				if (optarg) {
@@ -81,13 +106,16 @@ void parseArgs(int argc, char *argv[]) {
 	}
 
 	if (target_pid == -1) {
-		errexit("no target PID specified for --pid");
+		errexit("no target PID specified for --pid|-p");
 	}
 	if (target_ns == NULL || *target_ns == '\0') {
-		errexit("no target namespace specified for --ns");
+		errexit("no target namespace specified for --ns|-n");
 	}
-	if (tpc == 0) {
-		errexit("no target paths specified for --paths");
+	if (target_pathc == 0) {
+		errexit("no target path(s) specified for --path|-t");
+	}
+	if (target_events == 0x0) {
+		target_events = IN_OPEN | IN_MODIFY;
 	}
 }
 
@@ -128,50 +156,50 @@ static void handle_events(int fd, int *wd, int pathc, char *paths[]) {
 		for (ptr = buf; ptr < buf + len; ptr += sizeof(struct inotify_event) + event->len) {
 			event = (const struct inotify_event *)ptr;
 
-			// @TODO: make events to watch configurable
-
 			// print event type
-			if (event->mask & IN_OPEN) {
-				fprintf(stdout, "IN_OPEN: ");
-			}
-			if (event->mask & IN_MODIFY) {
-				fprintf(stdout, "IN_MODIFY: ");
-			}
+			if (event->mask & IN_ACCESS)        printf("IN_ACCESS: ");
+			if (event->mask & IN_MODIFY)        printf("IN_MODIFY: ");
+			if (event->mask & IN_ATTRIB)        printf("IN_ATTRIB: ");
+			if (event->mask & IN_OPEN)          printf("IN_OPEN: ");
+			if (event->mask & IN_CLOSE_WRITE)   printf("IN_CLOSE_WRITE: ");
+			if (event->mask & IN_CLOSE_NOWRITE) printf("IN_CLOSE_NOWRITE: ");
+			if (event->mask & IN_MOVED_FROM)    printf("IN_MOVED_FROM: ");
+			if (event->mask & IN_MOVED_TO)      printf("IN_MOVED_TO: ");
+			if (event->mask & IN_MOVE_SELF)     printf("IN_MOVE_SELF: ");
+			if (event->mask & IN_CREATE)        printf("IN_CREATE: ");
+			if (event->mask & IN_DELETE)        printf("IN_DELETE: ");
+			if (event->mask & IN_DELETE_SELF)   printf("IN_DELETE_SELF: ");
 
 			// print the name of the watched directory
 			for (i = 0; i < pathc; i++) {
 				if (wd[i] == event->wd) {
-					fprintf(stdout, "%s/", paths[i]);
+					printf("%s", paths[i]);
 					break;
 				}
 			}
 
 			// print the name of the file
 			if (event->len) {
-				fprintf(stdout, "%s", event->name);
+				printf("/%s", event->name);
 			}
 
 			// @TODO: make file|directory watch configurable
-
 			// print the type of filesystem object
-			if (event->mask & IN_ISDIR) {
-				fprintf(stdout, " [directory]\n");
-			} else {
-				fprintf(stdout, " [file]\n");
-			}
+			printf(" [%s]\n", (event->mask & IN_ISDIR ? "directory" : "file"));
+
 			fflush(stdout);
 		}
 	}
 }
 
 int main(int argc, char *argv[]) {
-  parseArgs(argc, argv);
-
 	char buf, file[1024];
 	int fdns, fdin, i, poll_num;
 	int *wd;
 	nfds_t nfds;
 	struct pollfd fds[1];
+
+  parseArgs(argc, argv);
 
   // -- JOIN THE NAMESPACE
 
@@ -199,19 +227,14 @@ int main(int argc, char *argv[]) {
   }
 
   // allocate memory for watch descriptors
-  wd = calloc(tpc, sizeof(int));
+  wd = calloc(target_pathc, sizeof(int));
   if (wd == NULL) {
     errexit("calloc");
   }
 
-  /**
-   * make directories for events
-   * - file was opened
-   * - file was modified
-   */
-  for (i = 0; i < tpc; i++) {
-		// @TODO: make events configurable
-    wd[i] = inotify_add_watch(fdin, target_paths[i], IN_OPEN | IN_MODIFY);
+  // make directories for events
+  for (i = 0; i < target_pathc; ++i) {
+    wd[i] = inotify_add_watch(fdin, target_paths[i], target_events);
     if (wd[i] == -1) {
       fprintf(stderr, "Cannot watch '%s'\n", target_paths[i]);
       errexit("inotify_add_watch");
@@ -224,10 +247,10 @@ int main(int argc, char *argv[]) {
   fds[0].fd = fdin;
   fds[0].events = POLLIN;
 
-  // wait for events and/or terminal input
-  fprintf(stdout, "Listening for events.\n");
+  printf("Listening for events.\n");
   fflush(stdout);
 
+  // wait for events
   while (1) {
     poll_num = poll(fds, nfds, -1);
     if (poll_num == -1) {
@@ -240,12 +263,12 @@ int main(int argc, char *argv[]) {
     if (poll_num > 0) {
       if (fds[0].revents & POLLIN) {
 				// inotify events are available
-				handle_events(fdin, wd, tpc, target_paths);
+				handle_events(fdin, wd, target_pathc, target_paths);
       }
     }
   }
 
-  fprintf(stdout, "Listening for events stopped.\n");
+  printf("Listening for events stopped.\n");
   fflush(stdout);
 
   // close inotify file descriptor
