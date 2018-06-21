@@ -9,12 +9,12 @@
 	" -h, --help",    "display this help", \
 	" -v, --version", "display version"
 #define USAGE_MAN_TAIL(_man) "\nFor more details see %s.\n", _man
-#define UTIL_LINUX_VERSION "%s from v1.0\n", program_invocation_short_name/*, PACKAGE_STRING*/
+#define UTIL_LINUX_VERSION "%s v1.0\n", program_invocation_short_name
 
-#define errtryhelp(eval) __extension__ ({ \
+#define errtryhelp(eval) __extension__ ({                    \
 	fprintf(stderr, "Try '%s --help' for more information.\n", \
 		program_invocation_short_name);                          \
-	exit(eval); \
+	exit(eval);                                                \
 })
 
 #define errexit(msg) do { \
@@ -22,7 +22,7 @@
 	exit(EXIT_FAILURE);     \
 } while (0)
 
-unsigned long strtoul_or_err(const char *str, const char *errmesg) {
+unsigned long strtoul_or_err(const char *str, const char *errmsg) {
 	unsigned long num;
 	char *end = NULL;
 
@@ -37,6 +37,6 @@ unsigned long strtoul_or_err(const char *str, const char *errmesg) {
 	}
 	return num;
 err:
-	errexit(errmesg);
+	errexit(errmsg);
 }
 
