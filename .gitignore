@@ -1,1 +1,2 @@
-bin/fim-inotify
+bin/fim_inotify
+include/fim_inotify*

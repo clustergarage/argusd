@@ -41,7 +41,7 @@ static void __attribute__((__noreturn__)) usage(void) {
 
     fputs(USAGE_SEPARATOR, out);
     printf(USAGE_HELP_OPTIONS(24));
-    printf(USAGE_MAN_TAIL("fim-inotify(2)"));
+    printf(USAGE_MAN_TAIL("fim_inotify(2)"));
 
     exit(EXIT_SUCCESS);
 }

@@ -1,8 +1,8 @@
-# fim-inotify
+# fim\_inotify
 
 ```
 Usage:
- fim-inotify -p<pid> -n<namespace> -t<path>... [-e<event>...] [-f<format>]
+ fim_inotify -p<pid> -n<namespace> -t<path>... [-e<event>...] [-f<format>]
 
 Watch for namespace events within paths of a target PID.
 
@@ -26,13 +26,13 @@ Options:
 ### GCC
 
 ```
-gcc -o bin/fim-inotify src/fim-inotify.c
+gcc -o bin/fim_inotify src/fim_inotify.c
 ```
 
 ### Docker
 
 ```
-docker build -t clustergarage/fim-inotify:latest .
+docker build -t clustergarage/fim_inotify:latest .
 ```
 
 ## Running
@@ -40,13 +40,13 @@ docker build -t clustergarage/fim-inotify:latest .
 ### Shell
 
 ```
-./bin/fim-inotify -p1234 -nmnt -t/some/path
+./bin/fim_inotify -p1234 -nmnt -t/some/path
 ```
 
 ### Docker
 
 ```
-docker run --privileged -it --rm --pid=host clustergarage/fim-inotify:latest -p1234 -nmnt -t/some/path
+docker run --privileged -it --rm --pid=host clustergarage/fim_inotify:latest -p1234 -nmnt -t/some/path
 ```
 
 #### Example Output
@@ -57,7 +57,7 @@ $ ./bin/get_container_pids run=nginx
 1234
 
 # watch for events
-$ docker run --privileged -it --rm --pid=host clustergarage/fim-inotify:latest -p1234 -nmnt -t/var/log/nginx -emodify
+$ docker run --privileged -it --rm --pid=host clustergarage/fim_inotify:latest -p1234 -nmnt -t/var/log/nginx -emodify
 Listening for events.
 IN_MODIFY: /var/log/nginx/some.log [file]
 ...
