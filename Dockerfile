@@ -1,12 +1,10 @@
-FROM ubuntu
+FROM alpine
 
-RUN apt-get update && \
-  apt-get install -y inotify-tools gcc && \
-  rm -rf /var/lib/apt/lists/*
+RUN apk add --update --no-cache make gcc inotify-tools musl-dev
 
 WORKDIR /opt/fim
 COPY . /opt/fim
 
-RUN gcc -o bin/fim_inotify src/fim_inotify.c
+RUN make
 
 ENTRYPOINT ["/opt/fim/bin/fim_inotify"]

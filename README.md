@@ -23,10 +23,14 @@ Options:
 
 ## Building
 
-### GCC
+### Make
 
 ```
-gcc -o bin/fim_inotify src/fim_inotify.c
+# make headers/static lib/binary
+make
+
+# clean all
+make clean
 ```
 
 ### Docker
