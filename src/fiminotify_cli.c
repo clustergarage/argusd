@@ -1,23 +1,38 @@
 #define _GNU_SOURCE
 #include <errno.h>
-#include <fcntl.h>
 #include <getopt.h>
-#include <poll.h>
 #include <limits.h>
-#include <sched.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/inotify.h>
-#include <unistd.h>
 
-#include "common.h"
+#include "lib_fiminotify.h"
+
+#define __attribute__(_arg_)
+
+#define USAGE_HEADER    "\nUsage:\n"
+#define USAGE_OPTIONS   "\nOptions:\n"
+#define USAGE_SEPARATOR "\n"
+#define USAGE_HELP_OPTIONS(marg_dsc)       \
+    "%-" #marg_dsc "s%s\n"                 \
+    "%-" #marg_dsc "s%s\n",                \
+    " -h, --help",    "display this help", \
+    " -v, --version", "display version"
+#define USAGE_MAN_TAIL(_man) "\nFor more details see %s.\n", _man
+#define UTIL_LINUX_VERSION "%s v1.0\n", program_invocation_short_name
+
+#define errtryhelp(eval) __extension__ ({                      \
+    fprintf(stderr, "Try '%s --help' for more information.\n", \
+        program_invocation_short_name);                        \
+    exit(eval);                                                \
+})
 
 static pid_t target_pid = -1;
 static char *target_ns = NULL;
 static char *target_paths[32] = {NULL};
 static unsigned int target_pathc = 0;
-static unsigned int target_events, opt_flags;
+static unsigned int target_events;
 
 static void __attribute__((__noreturn__)) usage(void) {
     FILE *out = stdout;
@@ -46,7 +61,25 @@ static void __attribute__((__noreturn__)) usage(void) {
     exit(EXIT_SUCCESS);
 }
 
-void parseArgs(int argc, char *argv[]) {
+unsigned long strtoul_or_err(const char *str, const char *errmsg) {
+    unsigned long num;
+    char *end = NULL;
+
+    errno = 0;
+    if (str == NULL || *str == '\0') {
+        goto err;
+    }
+    num = strtoul(str, &end, 10);
+
+    if (errno || str == end || (end && *end)) {
+        goto err;
+    }
+    return num;
+err:
+    errexit(errmsg);
+}
+
+void parse_args(int argc, char *argv[]) {
     enum {
         OPT_ONLY_DIR = CHAR_MAX + 1,
         OPT_DONT_FOLLOW,
@@ -70,6 +103,7 @@ void parseArgs(int argc, char *argv[]) {
     };
 
     int c;
+    unsigned int opt_flags;
 
     while ((c = getopt_long(argc, argv, "+hvp:n:t:e::f::", longopts, NULL)) != EOF) {
         switch (c) {
@@ -146,163 +180,11 @@ void parseArgs(int argc, char *argv[]) {
     target_events |= opt_flags;
 }
 
-/**
- * read all available inotify events from the file descriptor `fd`
- * `wd` is the table of watch descriptors for the directories in `paths`
- * `pathc` is the length of `wd` and `paths`
- * `paths` [0->N-1] is the list of watched directories
- */
-static void handle_events(int fd, int *wd, int pathc, char *paths[]) {
-    /**
-     * some systems cannot read integer variables if they are not properly aligned
-     * on other systems, incorrect alignment may decrease performance
-     * hence, the buffer used for reading from the inotify file descriptor should
-     * have the same alignment as struct inotify_event
-     */
-    char buf[4096] __attribute__((aligned(__alignof__(struct inotify_event))));
-    const struct inotify_event *event;
-    int i;
-    ssize_t len;
-    char *ptr;
-
-    // loop while events can be read from the inotify file descriptor
-    for (;;) {
-        // read some events
-        len = read(fd, buf, sizeof(buf));
-        if (len == -1 && errno != EAGAIN) {
-            errexit("read");
-        }
-
-        // if the non-blocking `read()` found no events to read, then it
-        // returns with -1 with `errno` set to `EAGAIN`; exit the loop
-        if (len <= 0) {
-            break;
-        }
-
-        // loop over all events in the buffer
-        for (ptr = buf; ptr < buf + len; ptr += sizeof(struct inotify_event) + event->len) {
-            event = (const struct inotify_event *)ptr;
-
-            // print event type
-            if (event->mask & IN_ACCESS) printf("IN_ACCESS: ");
-            else if (event->mask & IN_MODIFY) printf("IN_MODIFY: ");
-            else if (event->mask & IN_ATTRIB) printf("IN_ATTRIB: ");
-            else if (event->mask & IN_OPEN) printf("IN_OPEN: ");
-            else if (event->mask & IN_CLOSE_WRITE) printf("IN_CLOSE_WRITE: ");
-            else if (event->mask & IN_CLOSE_NOWRITE) printf("IN_CLOSE_NOWRITE: ");
-            else if (event->mask & IN_CREATE) printf("IN_CREATE: ");
-            else if (event->mask & IN_DELETE) printf("IN_DELETE: ");
-            else if (event->mask & IN_DELETE_SELF) printf("IN_DELETE_SELF: ");
-            else if (event->mask & IN_MOVED_FROM) printf("IN_MOVED_FROM: ");
-            else if (event->mask & IN_MOVED_TO) printf("IN_MOVED_TO: ");
-            else if (event->mask & IN_MOVE_SELF) printf("IN_MOVE_SELF: ");
-            // IN_IGNORED called when oneshot is active
-            else break;
-
-            // print the name of the watched directory
-            for (i = 0; i < pathc; i++) {
-                if (wd[i] == event->wd) {
-                    printf("%s", paths[i]);
-                    break;
-                }
-            }
-
-            // print the name of the file
-            if (event->len) {
-                printf("/%s", event->name);
-            }
-
-            // @TODO: make file|directory watch configurable
-            // print the type of filesystem object
-            printf(" [%s]\n", (event->mask & IN_ISDIR ? "directory" : "file"));
-
-            fflush(stdout);
-        }
-    }
-}
-
 int main(int argc, char *argv[]) {
-    char buf, file[1024];
-    int fdns, fdin, i, poll_num;
-    int *wd;
-    nfds_t nfds;
-    struct pollfd fds[1];
+    parse_args(argc, argv);
 
-    parseArgs(argc, argv);
-
-    // -- JOIN THE NAMESPACE
-
-    // get file descriptor for namespace
-    sprintf(file, "/proc/%d/ns/%s", target_pid, target_ns);
-    fdns = open(file, O_RDONLY);
-    if (fdns == -1) {
-        errexit("open");
-    }
-
-    // join namespace
-    if (setns(fdns, 0) == -1) {
-        errexit("setns");
-    }
-
-    // close namespace file descriptor
-    close(fdns);
-
-    // -- START THE INOTIFY WATCHER
-
-    // create the file descriptor for accessing the inotify API
-    fdin = inotify_init1(IN_NONBLOCK);
-    if (fdin == -1) {
-        errexit("inotify_init1");
-    }
-
-    // allocate memory for watch descriptors
-    wd = calloc(target_pathc, sizeof(int));
-    if (wd == NULL) {
-        errexit("calloc");
-    }
-
-    // make directories for events
-    for (i = 0; i < target_pathc; ++i) {
-        wd[i] = inotify_add_watch(fdin, target_paths[i], target_events);
-        if (wd[i] == -1) {
-            fprintf(stderr, "Cannot watch '%s'\n", target_paths[i]);
-            errexit("inotify_add_watch");
-        }
-    }
-
-    // prepare for polling
-    nfds = 1;
-    // inotify input
-    fds[0].fd = fdin;
-    fds[0].events = POLLIN;
-
-    printf("Listening for events.\n");
-    fflush(stdout);
-
-    // wait for events
-    while (1) {
-        poll_num = poll(fds, nfds, -1);
-        if (poll_num == -1) {
-            if (errno == EINTR) {
-                continue;
-            }
-            errexit("poll");
-        }
-
-        if (poll_num > 0) {
-            if (fds[0].revents & POLLIN) {
-                // inotify events are available
-                handle_events(fdin, wd, target_pathc, target_paths);
-            }
-        }
-    }
-
-    printf("Listening for events stopped.\n");
-    fflush(stdout);
-
-    // close inotify file descriptor
-    close(fdin);
-    free(wd);
+    join_namespace(target_pid, target_ns);
+    start_inotify_watcher(target_pathc, target_paths, target_events);
 
     exit(EXIT_SUCCESS);
 }

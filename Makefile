@@ -1,13 +1,16 @@
-TARGET = fim_inotify
+SOURCELIB = lib_fiminotify
+SOURCECLI = fiminotify_cli
+TARGET = libfiminotify
+BINARY = fim_inotify
 
-bin/$(TARGET): include/$(TARGET).o include/$(TARGET).a
-	gcc $^ -o $@
+bin/$(BINARY): src/$(SOURCECLI).c lib/$(TARGET).o lib/$(TARGET).a
+	gcc -o $@ $^ 
 
-include/$(TARGET).a: include/$(TARGET).o
+lib/$(TARGET).a: lib/$(TARGET).o
 	ar rcs $@ $^
 
-include/$(TARGET).o: src/$(TARGET).c
+lib/$(TARGET).o: src/$(SOURCELIB).c src/$(SOURCELIB).h
 	gcc -c -o $@ $<
 
 clean:
-	rm -f include/${TARGET}.{o,a} bin/$(TARGET)
+	rm -f lib/$(TARGET).* bin/$(BINARY)

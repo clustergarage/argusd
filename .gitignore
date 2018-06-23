@@ -1,2 +1,3 @@
 bin/fim_inotify
-include/fim_inotify*
+lib/*.a
+lib/*.o
