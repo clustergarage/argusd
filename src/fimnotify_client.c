@@ -1,5 +1,6 @@
 #define _GNU_SOURCE
 #include <arpa/inet.h>
+#include <malloc.h>
 #include <netinet/in.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -104,7 +105,8 @@ int main(int argc, char *argv[]) {
     }
     amp_message = amp_encode(args, len);
 
-    send(sock, amp_message, len, 0);
+    send(sock, amp_message, len * malloc_usable_size(amp_message), 0);
 
-    return 0; }
+    return 0;
+}
 

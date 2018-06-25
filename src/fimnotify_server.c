@@ -53,7 +53,6 @@ int main(int argc, char *argv[]) {
     uint32_t target_event_mask;
 
     while ((read_size = read(sock, buffer, sizeof(buffer))) > 0) {
-        printf("!!! BUFFER: %s\n", buffer);
         amp_t msg = {0};
         amp_decode(&msg, (char *)&buffer);
 
@@ -70,7 +69,7 @@ int main(int argc, char *argv[]) {
                 target_ns = arg;
                 break;
             case 2:
-                target_event_mask = atoi(arg);
+                target_event_mask = strtoul(arg, NULL, 16);
                 break;
             default:
                 target_paths[target_pathc++] = arg;
