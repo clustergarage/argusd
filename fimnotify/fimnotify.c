@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include <sys/inotify.h>
 
-#include "lib_fiminotify.h"
+#include "fimnotify.h"
 
 /**
  * read all available inotify events from the file descriptor `fd`

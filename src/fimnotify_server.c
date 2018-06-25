@@ -9,7 +9,7 @@
 #define PORT 8080
 #define LISTEN_BACKLOG 50
 
-#include "lib_fiminotify.h"
+#include "fimnotify.h"
 
 int main(int argc, char *argv[]) {
     int sockfd, sock, read_size;

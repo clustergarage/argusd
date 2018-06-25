@@ -7,7 +7,7 @@
 #include <string.h>
 #include <sys/inotify.h>
 
-#include "lib_fiminotify.h"
+#include "fimnotify.h"
 
 #define __attribute__(_arg_)
 

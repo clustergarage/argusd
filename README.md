@@ -26,7 +26,9 @@ Options:
 ### Make
 
 ```
-# make headers/static lib/binary
+mkdir build
+cd build
+cmake ..
 make
 
 # clean all
