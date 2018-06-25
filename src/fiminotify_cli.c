@@ -32,7 +32,7 @@ static pid_t target_pid = -1;
 static char *target_ns = NULL;
 static char *target_paths[32] = {NULL};
 static unsigned int target_pathc = 0;
-static unsigned int target_events;
+static unsigned int target_event_mask;
 
 static void __attribute__((__noreturn__)) usage(void) {
     FILE *out = stdout;
@@ -123,15 +123,15 @@ void parse_args(int argc, char *argv[]) {
                 break;
             case 'e':
                 if (optarg) {
-                    if (strcmp(optarg, "all") == 0)         target_events |= IN_ALL_EVENTS;
-                    else if (strcmp(optarg, "access") == 0) target_events |= IN_ACCESS;
-                    else if (strcmp(optarg, "modify") == 0) target_events |= IN_MODIFY;
-                    else if (strcmp(optarg, "attrib") == 0) target_events |= IN_ATTRIB;
-                    else if (strcmp(optarg, "open") == 0)   target_events |= IN_OPEN;
-                    else if (strcmp(optarg, "close") == 0)  target_events |= IN_CLOSE;
-                    else if (strcmp(optarg, "create") == 0) target_events |= IN_CREATE;
-                    else if (strcmp(optarg, "delete") == 0) target_events |= IN_DELETE;
-                    else if (strcmp(optarg, "move") == 0)   target_events |= IN_MOVE;
+                    if (strcmp(optarg, "all") == 0)         target_event_mask |= IN_ALL_EVENTS;
+                    else if (strcmp(optarg, "access") == 0) target_event_mask |= IN_ACCESS;
+                    else if (strcmp(optarg, "modify") == 0) target_event_mask |= IN_MODIFY;
+                    else if (strcmp(optarg, "attrib") == 0) target_event_mask |= IN_ATTRIB;
+                    else if (strcmp(optarg, "open") == 0)   target_event_mask |= IN_OPEN;
+                    else if (strcmp(optarg, "close") == 0)  target_event_mask |= IN_CLOSE;
+                    else if (strcmp(optarg, "create") == 0) target_event_mask |= IN_CREATE;
+                    else if (strcmp(optarg, "delete") == 0) target_event_mask |= IN_DELETE;
+                    else if (strcmp(optarg, "move") == 0)   target_event_mask |= IN_MOVE;
                 }
                 break;
             case 'f':
@@ -150,6 +150,11 @@ void parse_args(int argc, char *argv[]) {
             case OPT_EXCLUDE_UNLINK:
                 opt_flags |= IN_EXCL_UNLINK;
                 break;
+            // @TODO: add option for IN_MASK_ADD
+            //
+            // If a watch instance already exists for the filesystem
+            // object corresponding to pathname, add (OR) the events in
+            // mask to the watch mask (instead of replacing the mask).
             case OPT_ONESHOT:
                 opt_flags |= IN_ONESHOT;
                 break;
@@ -173,18 +178,18 @@ void parse_args(int argc, char *argv[]) {
     }
 
     // if target events not set, set defaults
-    if (target_events == 0x0) {
-        target_events = IN_OPEN | IN_MODIFY;
+    if (target_event_mask == 0x0) {
+        target_event_mask = IN_OPEN | IN_MODIFY;
     }
     // apply optional flags to target events
-    target_events |= opt_flags;
+    target_event_mask |= opt_flags;
 }
 
 int main(int argc, char *argv[]) {
     parse_args(argc, argv);
 
     join_namespace(target_pid, target_ns);
-    start_inotify_watcher(target_pathc, target_paths, target_events);
+    start_inotify_watcher(target_pathc, target_paths, target_event_mask);
 
     exit(EXIT_SUCCESS);
 }

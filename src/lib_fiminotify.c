@@ -38,7 +38,7 @@ static void handle_events(int fd, int *wd, int pathc, char *paths[]) {
 
         // if the non-blocking `read()` found no events to read, then it
         // returns with -1 with `errno` set to `EAGAIN`; exit the loop
-        if (len <= 0) {
+        if (len == EOF) {
             break;
         }
 
@@ -91,7 +91,7 @@ void join_namespace(const pid_t pid, const char *ns) {
     // get file descriptor for namespace
     sprintf(file, "/proc/%d/ns/%s", pid, ns);
     fd = open(file, O_RDONLY);
-    if (fd == -1) {
+    if (fd == EOF) {
         errexit("open");
     }
 
@@ -99,6 +99,9 @@ void join_namespace(const pid_t pid, const char *ns) {
     if (setns(fd, 0) == -1) {
         errexit("setns");
     }
+
+    printf("Joined namespace: %s.\n", file);
+    fflush(stdout);
 
     // close namespace file descriptor
     close(fd);
@@ -108,11 +111,11 @@ void start_inotify_watcher(int pathc, char *paths[], int event_mask) {
     int fd, i, poll_num;
     int *wd;
     nfds_t nfds;
-    struct pollfd fds[1];
+    struct pollfd fds;
 
     // create the file descriptor for accessing the inotify API
     fd = inotify_init1(IN_NONBLOCK);
-    if (fd == -1) {
+    if (fd == EOF) {
         errexit("inotify_init1");
     }
 
@@ -122,28 +125,30 @@ void start_inotify_watcher(int pathc, char *paths[], int event_mask) {
         errexit("calloc");
     }
 
+    printf("Listening for events on: ");
+
     // make directories for events
     for (i = 0; i < pathc; ++i) {
         wd[i] = inotify_add_watch(fd, paths[i], event_mask);
-        if (wd[i] == -1) {
+        if (wd[i] == EOF) {
             fprintf(stderr, "Cannot watch '%s'\n", paths[i]);
             errexit("inotify_add_watch");
         }
+        printf("%s%s", (i ? ", " : ""), paths[i]);
     }
+    printf(".\n");
+    fflush(stdout);
 
     // prepare for polling
     nfds = 1;
     // inotify input
-    fds[0].fd = fd;
-    fds[0].events = POLLIN;
-
-    printf("Listening for events.\n");
-    fflush(stdout);
+    fds.fd = fd;
+    fds.events = POLLIN;
 
     // wait for events
     while (1) {
-        poll_num = poll(fds, nfds, -1);
-        if (poll_num == -1) {
+        poll_num = poll(&fds, nfds, -1);
+        if (poll_num == EOF) {
             if (errno == EINTR) {
                 continue;
             }
@@ -151,7 +156,7 @@ void start_inotify_watcher(int pathc, char *paths[], int event_mask) {
         }
 
         if (poll_num > 0) {
-            if (fds[0].revents & POLLIN) {
+            if (fds.revents & POLLIN) {
                 // inotify events are available
                 handle_events(fd, wd, pathc, paths);
             }
@@ -160,6 +165,10 @@ void start_inotify_watcher(int pathc, char *paths[], int event_mask) {
 
     printf("Listening for events stopped.\n");
     fflush(stdout);
+
+    for (i = 0; i < pathc; ++i) {
+        inotify_rm_watch(fd, wd[i]);
+    }
 
     // close inotify file descriptor
     close(fd);

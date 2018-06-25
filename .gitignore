@@ -1,3 +1,4 @@
 bin/fim_inotify
+bin/fiminotify_server
 lib/*.a
 lib/*.o
