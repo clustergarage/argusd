@@ -60,7 +60,6 @@ int main(int argc, char *argv[]) {
         int i;
         for (i = 0; i < msg.argc; ++i) {
             arg = amp_decode_arg(&msg);
-            printf(" %d ---> %s\n", i, arg);
             switch (i) {
             case 0:
                 target_pid = strtoul(arg, NULL, 10);

@@ -105,7 +105,7 @@ int main(int argc, char *argv[]) {
     }
     amp_message = amp_encode(args, len);
 
-    send(sock, amp_message, len * malloc_usable_size(amp_message), 0);
+    send(sock, amp_message, len * malloc_usable_size(args), 0);
 
     return 0;
 }
