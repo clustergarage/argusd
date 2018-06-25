@@ -7,9 +7,9 @@
 #include <sys/inotify.h>
 #include <sys/socket.h>
 
-#include "deps/amp/amp.h"
-#include "deps/commander/commander.h"
-#include "lib_fiminotify.h"
+#include "amp.h"
+#include "commander.h"
+#include "fimnotify.h"
 
 #define PORT 8080
 #define DEFAULT_NS "mnt"
