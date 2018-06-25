@@ -32,7 +32,7 @@ static pid_t target_pid = -1;
 static char *target_ns = NULL;
 static char *target_paths[32] = {NULL};
 static unsigned int target_pathc = 0;
-static unsigned int target_event_mask;
+static uint32_t target_event_mask;
 
 static void __attribute__((__noreturn__)) usage(void) {
     FILE *out = stdout;
@@ -150,11 +150,6 @@ void parse_args(int argc, char *argv[]) {
             case OPT_EXCLUDE_UNLINK:
                 opt_flags |= IN_EXCL_UNLINK;
                 break;
-            // @TODO: add option for IN_MASK_ADD
-            //
-            // If a watch instance already exists for the filesystem
-            // object corresponding to pathname, add (OR) the events in
-            // mask to the watch mask (instead of replacing the mask).
             case OPT_ONESHOT:
                 opt_flags |= IN_ONESHOT;
                 break;

@@ -10,6 +10,6 @@
 
 static void handle_events(int fd, int *wd, int pathc, char *paths[]);
 void join_namespace(const pid_t pid, const char *ns);
-void start_inotify_watcher(int pathc, char *paths[], int event_mask);
+void start_inotify_watcher(int pathc, char *paths[], uint32_t event_mask);
 
 #endif

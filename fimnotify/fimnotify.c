@@ -107,7 +107,7 @@ void join_namespace(const pid_t pid, const char *ns) {
     close(fd);
 }
 
-void start_inotify_watcher(int pathc, char *paths[], int event_mask) {
+void start_inotify_watcher(int pathc, char *paths[], uint32_t event_mask) {
     int fd, i, poll_num;
     int *wd;
     nfds_t nfds;
@@ -125,18 +125,20 @@ void start_inotify_watcher(int pathc, char *paths[], int event_mask) {
         errexit("calloc");
     }
 
-    printf("Listening for events on: ");
+    printf("Listening for events on:\n");
+    //fflush(stdout);
 
     // make directories for events
     for (i = 0; i < pathc; ++i) {
-        wd[i] = inotify_add_watch(fd, paths[i], event_mask);
+        wd[i] = inotify_add_watch(fd, paths[i], 0x00000022/*event_mask*/);
         if (wd[i] == EOF) {
             fprintf(stderr, "Cannot watch '%s'\n", paths[i]);
             errexit("inotify_add_watch");
         }
-        printf("%s%s", (i ? ", " : ""), paths[i]);
+
+        printf(" - %s\n", paths[i]);
+        //fflush(stdout);
     }
-    printf(".\n");
     fflush(stdout);
 
     // prepare for polling
