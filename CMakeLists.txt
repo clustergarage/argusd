@@ -11,11 +11,8 @@ include_directories (
 add_subdirectory (fimnotify)
 add_subdirectory (deps)
 
-add_executable(fim-notify-client src/fimnotify_client.c)
-target_link_libraries(fim-notify-client fimnotify commander amp)
+add_executable(fimctl client.c)
+target_link_libraries(fimctl fimnotify commander amp)
 
-add_executable(fim-notify-cli src/fimnotify_cli.c)
-target_link_libraries(fim-notify-cli fimnotify commander amp)
-
-add_executable(fim-notify-server src/fimnotify_server.c)
-target_link_libraries(fim-notify-server fimnotify commander amp)
+add_executable(fimd server.c)
+target_link_libraries(fimd fimnotify commander amp)
