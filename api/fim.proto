@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package api;
+
+service Fim {
+  rpc NewWatch(WatchConfig) returns (WatchHandle) {}
+}
+
+message WatchConfig {
+  string container = 1;
+  string paths = 2;
+}
+
+message WatchHandle {
+  string container_uri = 1;
+}
