@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+package fim;
+
+//import "k8s.io/apimachinery/pkg/apis/meta/v1/generated.proto";
+
+service Fimd {
+  rpc NewWatcher(FimWatcher) returns (FimWatcherStatus) {}
+}
+
+enum FimWatcherConditionType {
+  UNKOWN = 0;
+  SUBJECT_FAILURE = 1;
+}
+
+//should be from corev1.ConditionStatus?
+enum ConditionStatus {
+  UNKNOWN = 0;
+  TRUE = 1;
+  FALSE = 2;
+}
+
+message FimWatcherCondition {
+  FimWatcherConditionType type = 1;
+  ConditionStatus status = 2;
+  //Time lastTransitionTime = 3;
+  int64 lastTransitionTime = 3;
+  string reason = 4;
+  string message = 5;
+}
+
+message FimWatcherStatus {
+  string ObservablePods = 1;
+  repeated FimWatcherCondition conditions = 2;
+}
+
+message FimWatcherSpec {
+  //LabelSelector selector = 1;
+  string selector = 1;
+  repeated FimWatcherSubject subjects = 2;
+}
+
+message FimWatcherSubject {
+  repeated string paths = 1;
+  repeated string events = 2;
+}
+
+message FimWatcher {
+  FimWatcherSpec spec = 1;
+  FimWatcherStatus status = 2;
+}
+
+message FimWatcherList {
+  repeated FimWatcher items = 1;
+}
+
