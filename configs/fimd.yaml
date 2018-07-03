@@ -1,0 +1,54 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: fim-admin
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata:
+  name: fim-admin
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+- kind: ServiceAccount
+  name: fim-admin
+  namespace: kube-system
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: fimd.clustergarage.io
+  namespace: kube-system
+  labels:
+    daemon: fimd
+spec:
+  selector:
+    matchLabels:
+      daemon: fimd
+  template:
+    metadata:
+      labels:
+        daemon: fimd
+    spec:
+      #tolerations:
+      #- key: node-role.kubernetes.io/master
+      #  effect: NoSchedule
+      containers:
+      - name: fimd
+        image: clustergarage/fimd:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 50051
+        securityContext:
+          privileged: true
+        resources:
+          limits:
+            memory: 200Mi
+          requests:
+            cpu: 100m
+            memory: 200Mi
+      serviceAccountName: fim-admin
+      terminationGracePeriodSeconds: 30
