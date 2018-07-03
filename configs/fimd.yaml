@@ -52,3 +52,16 @@ spec:
             memory: 200Mi
       serviceAccountName: fim-admin
       terminationGracePeriodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fimd-svc
+  namespace: kube-system
+spec:
+  selector:
+    daemon: fimd
+  ports:
+  - protocol: TCP
+    port: 50051
+    targetPort: 50051
