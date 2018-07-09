@@ -12,6 +12,8 @@ import (
 
 	dockercli "github.com/docker/docker/client"
 	//"github.com/fsnotify/fsnotify"
+	//"github.com/opencontainers/runc/libcontainer"
+	//_ "github.com/opencontainers/runc/libcontainer/nsenter"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
@@ -48,7 +50,6 @@ func (s *server) getContainerPID(in *pb.FimdConfig) (pid int32, err error) {
 	if err != nil {
 		return 0, err
 	}
-	//cid := strings.TrimLeft(in.ContainerId, "docker://")
 	cid := strings.Replace(in.ContainerId, "docker://", "", 1)
 	inspect, err := cli.ContainerInspect(context.Background(), cid)
 	if err != nil {
@@ -64,15 +65,35 @@ func (s *server) startNotify(pid int32, in *pb.FimdConfig) {
 				fmt.Sprintf("-t%s", strings.Join(subject.Paths, " -t")),
 				fmt.Sprintf("-e%s", strings.Join(subject.Events, " -e"))))
 
+		/*
+			args := []string{"nsenter-exec"} //, "--nspid", fmt.Sprintf("%d", pid)}
+			r, w, err := os.Pipe()
+			if err != nil {
+				fmt.Println("pipe err", err)
+				return
+			}
+
+			cmd := &exec.Cmd{
+				Path:       os.Args[0],
+				Args:       args,
+				ExtraFiles: []*os.File{w},
+				Env:        []string{fmt.Sprintf("_LIBCONTAINER_INITPID=%d", pid), "_LIBCONTAINER_INITPIPE=3"},
+			}
+		*/
+
 		stdout, err := cmd.StdoutPipe()
 		if err != nil {
-			return
-		}
-		if err := cmd.Start(); err != nil {
+			fmt.Println(err)
 			return
 		}
 
-		scanner := bufio.NewScanner(stdout)
+		if err := cmd.Start(); err != nil {
+			fmt.Println("start err", err)
+			return
+		}
+		//w.Close()
+
+		scanner := bufio.NewScanner( /*r*/ stdout)
 		go func() {
 			for scanner.Scan() {
 				fmt.Println(scanner.Text())
@@ -80,6 +101,7 @@ func (s *server) startNotify(pid int32, in *pb.FimdConfig) {
 		}()
 
 		if err := cmd.Wait(); err != nil {
+			fmt.Println("wait err", err)
 			return
 		}
 	}
