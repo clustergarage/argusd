@@ -14,15 +14,14 @@ spec:
       labels:
         daemon: fimd
     spec:
-      #tolerations:
-      #- key: node-role.kubernetes.io/master
-      #  effect: NoSchedule
       containers:
       - name: fimd
         image: clustergarage/fimd:latest
-        imagePullPolicy: Always
         ports:
         - containerPort: 50051
+        volumeMounts:
+        - name: dockersock
+          mountPath: /var/run/docker.sock
         securityContext:
           privileged: true
         resources:
@@ -31,6 +30,15 @@ spec:
           requests:
             cpu: 100m
             memory: 200Mi
+      hostPID: true
+      #tolerations:
+      #- key: node-role.kubernetes.io/master
+      #  effect: NoSchedule
+      volumes:
+      - name: dockersock
+        hostPath:
+          path: /var/run/docker.sock
+      serviceAccountName: fim-admin
       terminationGracePeriodSeconds: 30
 ---
 apiVersion: v1
