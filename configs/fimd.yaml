@@ -20,8 +20,12 @@ spec:
         ports:
         - containerPort: 50051
         volumeMounts:
+        - name: dockerpid
+          mountPath: /var/run/docker.pid
         - name: dockersock
           mountPath: /var/run/docker.sock
+        - name: sysfscgroup
+          mountPath: /sys/fs/cgroup
         securityContext:
           privileged: true
         resources:
@@ -35,9 +39,15 @@ spec:
       #- key: node-role.kubernetes.io/master
       #  effect: NoSchedule
       volumes:
+      - name: dockerpid
+        hostPath:
+          path: /var/run/docker.pid
       - name: dockersock
         hostPath:
           path: /var/run/docker.sock
+      - name: sysfscgroup
+        hostPath:
+          path: /sys/fs/cgroup
       serviceAccountName: fim-admin
       terminationGracePeriodSeconds: 30
 ---
