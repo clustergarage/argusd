@@ -96,7 +96,7 @@ void join_namespace(const pid_t pid, const char *ns) {
     }
 
     // join namespace
-    if (setns(fd, 0) == -1) {
+    if (setns(fd, CLONE_NEWNS) == EOF) {
         errexit("setns");
     }
 

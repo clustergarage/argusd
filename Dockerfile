@@ -1,9 +1,18 @@
-FROM golang:latest as builder
+FROM ubuntu
 RUN apt-get update && \
     apt-get -y install apt-transport-https \
+        autoconf \
+        build-essential \
         ca-certificates \
+        clang \
         curl \
+        g++ \
         gnupg2 \
+        libtool \
+        libgflags-dev \
+        libgtest-dev \
+        libc++-dev \
+        pkg-config \
         software-properties-common && \
     curl -fsSL https://download.docker.com/linux/$(. /etc/os-release; echo "$ID")/gpg > /tmp/dkey; apt-key add /tmp/dkey && \
     add-apt-repository \
@@ -12,14 +21,18 @@ RUN apt-get update && \
         stable" && \
     apt-get update && \
     apt-get -y install docker-ce
-WORKDIR /go/src/clustergarage.io/fimd/
-COPY . /go/src/clustergarage.io/fimd/
-RUN CGO_ENABLED=0 go build -a -installsuffix cgo -o fimd .
-CMD ["./fimd"]
 
-#FROM golang:alpine
-#RUN apk add --update --no-cache sudo bash ca-certificates docker
-#WORKDIR /root/
-#COPY --from=builder /go/src/clustergarage.io/fimd/fimd .
-#COPY --from=builder /go/src/clustergarage.io/fimd/bin/fim_inotify .
-#CMD ["./fimd"]
+RUN cd /usr/local/src && \
+    git clone -b $(curl -L https://grpc.io/release) https://github.com/grpc/grpc && \
+    cd grpc && \
+    git submodule update --init && \
+    make -j4 && \
+    make install && \
+    cd third_party/protobuf && \
+    make install
+
+WORKDIR /opt/fimd/
+COPY . /opt/fimd/
+RUN make -j4
+
+CMD ["./fim_server"]
