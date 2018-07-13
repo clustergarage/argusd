@@ -25,10 +25,10 @@ set(_GRPC_GRPCPP_UNSECURE gRPC::grpc++)
 set(_GRPC_CPP_PLUGIN_EXECUTABLE $<TARGET_FILE:gRPC::grpc_cpp_plugin>)
 
 include_directories(
-	# Include generated *.pb.h files
-	"${CMAKE_CURRENT_BINARY_DIR}"
-    "${PROJECT_SOURCE_DIR}/fimnotify"
-    "${PROJECT_SOURCE_DIR}/fim-proto"
+  # Include generated *.pb.h files
+  "${CMAKE_CURRENT_BINARY_DIR}"
+  "${PROJECT_SOURCE_DIR}/fimnotify"
+  "${PROJECT_SOURCE_DIR}/fim-proto"
 )
 add_subdirectory(fimnotify fim-proto)
 

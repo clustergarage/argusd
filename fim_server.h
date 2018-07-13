@@ -15,7 +15,7 @@ public:
     grpc::Status NewWatch(grpc::ServerContext *context, const fim::FimdConfig *request, fim::FimdHandle *response) override;
 
 private:
-	// @TODO: vector of watchers to use for kill/modify operations
+    // @TODO: vector of watchers to use for kill/modify operations
 };
 
 // @TODO: split these out into util class
@@ -44,11 +44,11 @@ std::vector<std::string> glob(const std::string &pattern) {
     glob_t glob_result;
     int err = glob(pattern.c_str(), GLOB_TILDE, NULL, &glob_result);
     if (err == 0) {
-		for (size_t i = 0; i < glob_result.gl_pathc; ++i) {
-			filenames.push_back(std::string(glob_result.gl_pathv[i]));
-		}
-	}
-	globfree(&glob_result);
+        for (size_t i = 0; i < glob_result.gl_pathc; ++i) {
+            filenames.push_back(std::string(glob_result.gl_pathv[i]));
+        }
+    }
+    globfree(&glob_result);
     return filenames;
 }
 

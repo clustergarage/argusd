@@ -76,68 +76,68 @@ int getPidForContainer(string id) {
 
     id += '*';
     vector<string> attempts = {
-		cgroup_root + cgroup_this + '/' + id + "/tasks",
-		// with more recent lxc, cgroup will be in lxc/
-		cgroup_root + cgroup_this + "/lxc/" + id + "/tasks",
-		// with more recent docker, cgroup will be in docker/
-		cgroup_root + cgroup_this + "/docker/" + id + "/tasks",
-		// even more recent docker versions under systemd, use docker-<id>.scope/
-		cgroup_root + "/system.slice/docker-" + id + ".scope/tasks",
-		// even more recent docker versions under cgroup/systemd/docker/<id>/
-		cgroup_root + "/../systemd/docker/" + id + "/tasks",
-		// kubernetes with docker and CNI is even more different
-		cgroup_root + "/../systemd/kubepods/*/pod*/" + id + "/tasks"
-	};
+        cgroup_root + cgroup_this + '/' + id + "/tasks",
+        // with more recent lxc, cgroup will be in lxc/
+        cgroup_root + cgroup_this + "/lxc/" + id + "/tasks",
+        // with more recent docker, cgroup will be in docker/
+        cgroup_root + cgroup_this + "/docker/" + id + "/tasks",
+        // even more recent docker versions under systemd, use docker-<id>.scope/
+        cgroup_root + "/system.slice/docker-" + id + ".scope/tasks",
+        // even more recent docker versions under cgroup/systemd/docker/<id>/
+        cgroup_root + "/../systemd/docker/" + id + "/tasks",
+        // kubernetes with docker and CNI is even more different
+        cgroup_root + "/../systemd/kubepods/*/pod*/" + id + "/tasks"
+    };
 
     for (auto it = attempts.begin(); it != attempts.end(); ++it) {
         vector<string> files = glob(*it);
-		if (files.size() > 0) {
-			ifstream output(files[0]);
-			string line;
-			getline(output, line);
-			pid = atoi(line.c_str());
-		}
+        if (files.size() > 0) {
+            ifstream output(files[0]);
+            string line;
+            getline(output, line);
+            pid = atoi(line.c_str());
+        }
     }
     return pid;
 }
 
 Status FimdImpl::NewWatch(ServerContext *context, const FimdConfig *request, FimdHandle *response) {
     const string &containerid = erase_substr(request->containerid(), "docker://");
-	int pid = getPidForContainer(containerid);
+    int pid = getPidForContainer(containerid);
     cout << "NewWatch: [" << containerid << " | pid: " << pid << "]" << endl;
-	if (pid == 0) {
-		return Status::CANCELLED;
-	}
+    if (pid == 0) {
+        return Status::CANCELLED;
+    }
 
     int i, j;
     for (i = 0; i < request->subjects_size(); ++i) {
         const FimWatcherSubject &subject = request->subjects(i);
 
-		// @TODO: wait until watch dir is available (retry queue?)
-		char *paths[subject.paths_size()];
-		for (j = 0; j < subject.paths_size(); ++j) {
-			snprintf(paths[j], 1024, "/proc/%d/root%s", pid, subject.paths(j).c_str());
-		}
+        // @TODO: wait until watch dir is available (retry queue?)
+        char *paths[subject.paths_size()];
+        for (j = 0; j < subject.paths_size(); ++j) {
+            snprintf(paths[j], 1024, "/proc/%d/root%s", pid, subject.paths(j).c_str());
+        }
 
         uint32_t event_mask = 0;
-		for (j = 0; j < subject.events_size(); ++j) {
-			const char *event = subject.events(j).c_str();
-			if (strcmp(event, "all") == 0)         event_mask |= IN_ALL_EVENTS;
-			else if (strcmp(event, "access") == 0) event_mask |= IN_ACCESS;
-			else if (strcmp(event, "modify") == 0) event_mask |= IN_MODIFY;
-			else if (strcmp(event, "attrib") == 0) event_mask |= IN_ATTRIB;
-			else if (strcmp(event, "open") == 0)   event_mask |= IN_OPEN;
-			else if (strcmp(event, "close") == 0)  event_mask |= IN_CLOSE;
-			else if (strcmp(event, "create") == 0) event_mask |= IN_CREATE;
-			else if (strcmp(event, "delete") == 0) event_mask |= IN_DELETE;
-			else if (strcmp(event, "move") == 0)   event_mask |= IN_MOVE;
-			// @TODO: handle mask_add (IN_MASK_ADD) for existing watcher
-		}
+        for (j = 0; j < subject.events_size(); ++j) {
+            const char *event = subject.events(j).c_str();
+            if (strcmp(event, "all") == 0)         event_mask |= IN_ALL_EVENTS;
+            else if (strcmp(event, "access") == 0) event_mask |= IN_ACCESS;
+            else if (strcmp(event, "modify") == 0) event_mask |= IN_MODIFY;
+            else if (strcmp(event, "attrib") == 0) event_mask |= IN_ATTRIB;
+            else if (strcmp(event, "open") == 0)   event_mask |= IN_OPEN;
+            else if (strcmp(event, "close") == 0)  event_mask |= IN_CLOSE;
+            else if (strcmp(event, "create") == 0) event_mask |= IN_CREATE;
+            else if (strcmp(event, "delete") == 0) event_mask |= IN_DELETE;
+            else if (strcmp(event, "move") == 0)   event_mask |= IN_MOVE;
+            // @TODO: handle mask_add (IN_MASK_ADD) for existing watcher
+        }
 
-		cout << "[server] Starting inotify watcher..." << endl;
+        cout << "[server] Starting inotify watcher..." << endl;
         // @TODO: put output into a channel of some kind
-		// @TODO: hold onto watcher events (vector) for later kill/modify operations
-		start_inotify_watcher(subject.paths_size(), paths, event_mask);
+        // @TODO: hold onto watcher events (vector) for later kill/modify operations
+        start_inotify_watcher(subject.paths_size(), paths, event_mask);
     }
 
     cout << "OK" << endl;
@@ -145,8 +145,8 @@ Status FimdImpl::NewWatch(ServerContext *context, const FimdConfig *request, Fim
 }
 
 int main(int argc, char **argv) {
-	stringstream ss;
-	ss << "0.0.0.0:" << PORT;
+    stringstream ss;
+    ss << "0.0.0.0:" << PORT;
     string server_address(ss.str());
     FimdImpl service;
 
