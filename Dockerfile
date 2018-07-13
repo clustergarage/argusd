@@ -1,11 +1,11 @@
-FROM ubuntu:bionic
-
+FROM ubuntu:bionic as builder
 RUN apt-get update && \
     apt-get -y install apt-transport-https \
         autoconf \
         build-essential \
         ca-certificates \
         clang \
+        cmake \
         curl \
         g++ \
         gnupg2 \
@@ -22,7 +22,7 @@ RUN apt-get update && \
         stable" && \
     apt-get update && \
     apt-get -y install docker-ce
-
+# grpc, protobuf
 RUN cd /usr/local/src && \
     git clone -b $(curl -L https://grpc.io/release) https://github.com/grpc/grpc && \
     cd grpc && \
@@ -31,9 +31,27 @@ RUN cd /usr/local/src && \
     make install && \
     cd third_party/protobuf && \
     make install
-
+# cmake
+RUN cd /usr/local/src && \
+    curl -O https://cmake.org/files/v3.10/cmake-3.10.3.tar.gz && \
+    tar xvf cmake-3.10.3.tar.gz && \
+    cd cmake-3.10.3 && \
+    ./bootstrap && \
+    make && \
+    make install && \
+    cd .. && \
+    rm -rf cmake*
 WORKDIR /opt/fimd/
 COPY . /opt/fimd/
-RUN make -j4
+RUN mkdir -p build && \
+    cd build && \
+    cmake .. && \
+    make -j4
+CMD ["/bin/bash"]
+ENTRYPOINT ["/opt/fimd/build/fimd"]
 
-CMD ["./fim_server"]
+#FROM alpine:latest
+#RUN apk --no-cache add ca-certificates
+#WORKDIR /root/
+#COPY --from=builder /opt/fimd/build/fimd .
+#CMD ["./fimd"]
