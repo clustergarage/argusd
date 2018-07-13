@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-#include "fim.grpc.pb.h"
+#include "fim-proto/fim.grpc.pb.h"
 
 class FimdImpl final : public fim::Fimd::Service {
 public:

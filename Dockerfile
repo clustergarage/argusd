@@ -1,4 +1,5 @@
-FROM ubuntu
+FROM ubuntu:bionic
+
 RUN apt-get update && \
     apt-get -y install apt-transport-https \
         autoconf \
