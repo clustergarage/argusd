@@ -5,22 +5,19 @@
 ### Prerequisites
 
 ```
+# install necessary packages
 sudo apt install build-essential autoconf libtool pkg-config
 sudo apt install libgflags-dev libgtest-dev
 sudo apt install clang libc++-dev
-```
 
-#### gRPC/Protobuf
-
-```
-# Clone repo
+# install gRPC/Protobuf
 git clone -b $(curl -L https://grpc.io/release) https://github.com/grpc/grpc
 
-# Build Protobuf
+# build protobuf
 cd grpc/third_party/protobuf
 sudo make install
 
-# Build gRPC
+# build gRPC
 cd grpc
 git submodule update --init
 make
@@ -40,7 +37,7 @@ make
 #### Docker
 
 ```
-docker build -t clustergarage/fimd .
+docker build -t clustergarage/fimd:latest .
 ```
 
 ## Running
@@ -54,10 +51,7 @@ kubectl apply -f configs/fimd.yaml
 ### OpenShift
 
 ```
-# add scc user for running privileged
-oc edit scc privileged
-# add under users:
-# - system:serviceaccount:kube-system:fim-admin
+oc adm policy add-scc-to-user privileged -n kube-system -z fim-admin
 
 oc apply -f configs/fimd.yaml
 ```
