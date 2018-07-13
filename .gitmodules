@@ -1,0 +1,3 @@
+[submodule "fim-proto"]
+	path = fim-proto
+	url = https://github.com/clustergarage/fim-proto
