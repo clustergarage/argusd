@@ -1,7 +1,12 @@
+#include <chrono>
 #include <fstream>
+#include <future>
+#include <iostream>
 #include <sstream>
 #include <string>
 #include <sys/inotify.h>
+#include <thread>
+#include <vector>
 
 #include <grpc/grpc.h>
 #include <grpc++/server_context.h>
@@ -31,12 +36,18 @@ Status FimdImpl::NewWatch(ServerContext *context, const FimdConfig *request, Fim
     int i, j;
     for (i = 0; i < request->subjects_size(); ++i) {
         const FimWatcherSubject &subject = request->subjects(i);
-
-        // @TODO: wait until watch dir is available (retry queue?)
-        char *paths[subject.paths_size()];
+        // @TODO: wait until watch dir is available? (retry queue?)
+        vector<string> pathvec;
         for (j = 0; j < subject.paths_size(); ++j) {
-            snprintf(paths[j], 1024, "/proc/%d/root%s", pid, subject.paths(j).c_str());
+            stringstream ss;
+            ss << "/proc/" << pid << "/root" << subject.paths(j).c_str();
+            pathvec.push_back(ss.str());
         }
+		char **patharr = new char *[pathvec.size()];
+		for(size_t x = 0; x < pathvec.size(); x++){
+			patharr[x] = new char[pathvec[x].size() + 1];
+			strcpy(patharr[x], pathvec[x].c_str());
+		}
 
         uint32_t event_mask = 0;
         for (j = 0; j < subject.events_size(); ++j) {
@@ -54,11 +65,12 @@ Status FimdImpl::NewWatch(ServerContext *context, const FimdConfig *request, Fim
         }
 
         cout << "[server] Starting inotify watcher..." << endl;
-        // @TODO: put output into a channel of some kind
-        // @TODO: hold onto watcher events (vector) for later kill/modify operations
-        start_inotify_watcher(subject.paths_size(), paths, event_mask);
+
+		packaged_task<void(int, char **, uint32_t)> task(start_inotify_watcher);
+		thread task_td(move(task), subject.paths_size(), (char **)patharr, (uint32_t)event_mask);
+		task_td.detach();
+        m_watchers.push_back(&task_td);
     }
 
-    cout << "OK" << endl;
     return Status::OK;
 }

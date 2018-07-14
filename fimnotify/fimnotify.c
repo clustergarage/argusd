@@ -14,9 +14,7 @@
  * `wd` is the table of watch descriptors for the directories in `paths`
  * `pathc` is the length of `wd` and `paths`
  * `paths` [0->N-1] is the list of watched directories
- */
-static void handle_events(int fd, int *wd, int pathc, char *paths[]) {
-    /**
+ */ static void handle_events(int fd, int *wd, int pathc, char *paths[]) { /**
      * some systems cannot read integer variables if they are not properly aligned
      * on other systems, incorrect alignment may decrease performance
      * hence, the buffer used for reading from the inotify file descriptor should

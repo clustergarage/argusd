@@ -1,6 +1,10 @@
 #ifndef _FIMDIMPL_H
 #define _FIMDIMPL_H
 
+#include <future>
+#include <thread>
+#include <vector>
+
 #include "fim-proto/fim.grpc.pb.h"
 
 class FimdImpl final : public fim::Fimd::Service {
@@ -11,7 +15,7 @@ public:
     grpc::Status NewWatch(grpc::ServerContext *context, const fim::FimdConfig *request, fim::FimdHandle *response) override;
 
 private:
-    // @TODO: vector of watchers to use for kill/modify operations
+    std::vector<std::thread *> m_watchers;
 };
 
 #endif

@@ -36,4 +36,4 @@ add_subdirectory(fimnotify fim-proto)
 
 # Targets
 add_executable(fimd fimd_server.cc fimd_impl.cc fimd_util.cc ${_FIM_PROTO_SRCS} ${_FIM_GRPC_SRCS})
-target_link_libraries(fimd fimnotify ${_PROTOBUF_LIBPROTOBUF} ${_GRPC_GRPCPP_UNSECURE})
+target_link_libraries(fimd fimnotify pthread ${_PROTOBUF_LIBPROTOBUF} ${_GRPC_GRPCPP_UNSECURE})
