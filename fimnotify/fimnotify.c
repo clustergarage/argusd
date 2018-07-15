@@ -3,6 +3,7 @@
 #include <fcntl.h>
 #include <poll.h>
 #include <sched.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/inotify.h>
@@ -105,11 +106,13 @@ void join_namespace(const pid_t pid, const char *ns) {
     close(fd);
 }
 
-void start_inotify_watcher(int pathc, char *paths[], uint32_t event_mask) {
+void start_inotify_watcher(int pathc, char *paths[], uint32_t event_mask, int process_eventfd) {
     int fd, i, poll_num;
     int *wd;
     nfds_t nfds;
-    struct pollfd fds;
+    struct pollfd fds[2];
+    sigset_t sigmask;
+    sigaddset(&sigmask, SIGCHLD);
 
     // create the file descriptor for accessing the inotify API
     fd = inotify_init1(IN_NONBLOCK);
@@ -138,14 +141,17 @@ void start_inotify_watcher(int pathc, char *paths[], uint32_t event_mask) {
     fflush(stdout);
 
     // prepare for polling
-    nfds = 1;
+    nfds = 2;
     // inotify input
-    fds.fd = fd;
-    fds.events = POLLIN;
+    fds[0].fd = fd;
+    fds[0].events = POLLIN;
+    // anonymous pipe for manual kill
+    fds[1].fd = process_eventfd;
+    fds[1].events = POLLIN;
 
     // wait for events
     while (1) {
-        poll_num = poll(&fds, nfds, -1);
+        poll_num = ppoll(fds, nfds, NULL, &sigmask);
         if (poll_num == EOF) {
             if (errno == EINTR) {
                 continue;
@@ -154,9 +160,21 @@ void start_inotify_watcher(int pathc, char *paths[], uint32_t event_mask) {
         }
 
         if (poll_num > 0) {
-            if (fds.revents & POLLIN) {
+            if (fds[0].revents & POLLIN) {
                 // inotify events are available
                 handle_events(fd, wd, pathc, paths);
+            }
+
+            if (fds[1].revents & POLLIN) {
+                uint64_t value;
+                read(fds[1].fd, &value, sizeof(value));
+                if (value & INOTIFY_KILL) {
+                    fflush(stdout);
+                    break;
+                }
+                if (value & INOTIFY_MODIFY) {
+                    // modify existing inotify watcher (IN_MASK_ADD)
+                }
             }
         }
     }

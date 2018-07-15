@@ -23,8 +23,8 @@ message(STATUS "Using gRPC ${gRPC_VERSION}")
 
 set(_GRPC_GRPCPP_UNSECURE gRPC::grpc++)
 set(_GRPC_CPP_PLUGIN_EXECUTABLE $<TARGET_FILE:gRPC::grpc_cpp_plugin>)
-set(_FIM_PROTO_SRCS ${PROJECT_SOURCE_DIR}/fim-proto/fim.pb.cc)
-set(_FIM_GRPC_SRCS ${PROJECT_SOURCE_DIR}/fim-proto/fim.grpc.pb.cc)
+set(_FIM_PROTO_SRCS ${PROJECT_SOURCE_DIR}/fim-proto/c++/fim.pb.cc)
+set(_FIM_GRPC_SRCS ${PROJECT_SOURCE_DIR}/fim-proto/c++/fim.grpc.pb.cc)
 
 include_directories(
   # Include generated *.pb.h files

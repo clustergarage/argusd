@@ -8,8 +8,11 @@
     exit(EXIT_FAILURE);   \
 } while (0)
 
+#define INOTIFY_KILL 1
+#define INOTIFY_MODIFY 2
+
 static void handle_events(int fd, int *wd, int pathc, char *paths[]);
 void join_namespace(const pid_t pid, const char *ns);
-void start_inotify_watcher(int pathc, char *paths[], uint32_t event_mask);
+void start_inotify_watcher(int pathc, char *paths[], uint32_t event_mask, int process_eventfd);
 
 #endif
