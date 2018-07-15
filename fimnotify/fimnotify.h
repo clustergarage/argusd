@@ -8,8 +8,7 @@
     exit(EXIT_FAILURE);   \
 } while (0)
 
-#define INOTIFY_KILL 1
-#define INOTIFY_MODIFY 2
+#define FIMNOTIFY_KILL 9
 
 static void handle_events(int fd, int *wd, int pathc, char *paths[]);
 void join_namespace(const pid_t pid, const char *ns);

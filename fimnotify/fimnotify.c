@@ -112,6 +112,7 @@ void start_inotify_watcher(int pathc, char *paths[], uint32_t event_mask, int pr
     nfds_t nfds;
     struct pollfd fds[2];
     sigset_t sigmask;
+    sigemptyset(&sigmask);
     sigaddset(&sigmask, SIGCHLD);
 
     // create the file descriptor for accessing the inotify API
@@ -168,12 +169,15 @@ void start_inotify_watcher(int pathc, char *paths[], uint32_t event_mask, int pr
             if (fds[1].revents & POLLIN) {
                 uint64_t value;
                 read(fds[1].fd, &value, sizeof(value));
-                if (value & INOTIFY_KILL) {
-                    fflush(stdout);
+                if (value & FIMNOTIFY_KILL) {
+                    for (i = 0; i < pathc; ++i) {
+                        int ret = inotify_rm_watch(fd, wd[i]);
+                        if (ret == EOF) {
+                            fprintf(stderr, "Cannot remove '%s'\n", paths[i]);
+                            errexit("inotify_rm_watch");
+                        }
+                    }
                     break;
-                }
-                if (value & INOTIFY_MODIFY) {
-                    // modify existing inotify watcher (IN_MASK_ADD)
                 }
             }
         }

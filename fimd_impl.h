@@ -12,15 +12,20 @@ public:
     explicit FimdImpl() = default;
     ~FimdImpl() = default;
 
+    struct FimdWatcher {
+        const int pid;
+        std::vector<int> processEventfds;
+    };
+
     grpc::Status CreateWatch(grpc::ServerContext *context, const fim::FimdConfig *request, fim::FimdHandle *response) override;
     grpc::Status DestroyWatch(grpc::ServerContext *context, const fim::FimdConfig *request, fim::FimdHandle *response) override;
 
-public:
-    struct FimdWatcher {
-        const int pid;
-        const std::vector<std::shared_ptr<std::thread>> threads;
-        const std::vector<int> processEventfds;
-    };
+private:
+    std::shared_ptr<FimdWatcher> findFimdWatcherByPid(const int pid);
+	char **getPathArrayFromSubject(const int pid, const fim::FimWatcherSubject subject);
+	uint32_t getEventMaskFromSubject(const fim::FimWatcherSubject subject);
+	void createInotifyWatcher(const fim::FimWatcherSubject subject, char **patharr, uint32_t event_mask, std::vector<int> *procFds);
+	void sendKillSignalToWatcher(std::shared_ptr<FimdWatcher> watcher);
 
 private:
     std::vector<std::shared_ptr<FimdWatcher>> m_watchers;
