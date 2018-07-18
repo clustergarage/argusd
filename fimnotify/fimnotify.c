@@ -4,6 +4,7 @@
 #include <poll.h>
 #include <sched.h>
 #include <signal.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/inotify.h>
@@ -15,7 +16,8 @@
  * `wd` is the table of watch descriptors for the directories in `paths`
  * `pathc` is the length of `wd` and `paths`
  * `paths` [0->N-1] is the list of watched directories
- */ static void handle_events(int fd, int *wd, int pathc, char *paths[]) { /**
+ */
+static void handle_events(int fd, int *wd, int pathc, char *paths[]) { /**
      * some systems cannot read integer variables if they are not properly aligned
      * on other systems, incorrect alignment may decrease performance
      * hence, the buffer used for reading from the inotify file descriptor should
@@ -32,7 +34,11 @@
         // read some events
         len = read(fd, buf, sizeof(buf));
         if (len == -1 && errno != EAGAIN) {
-            errexit("read");
+#if DEBUG
+            perror("read");
+#endif
+			return;
+			//exit(EXIT_FAILURE);
         }
 
         // if the non-blocking `read()` found no events to read, then it
@@ -91,12 +97,18 @@ void join_namespace(const pid_t pid, const char *ns) {
     sprintf(file, "/proc/%d/ns/%s", pid, ns);
     fd = open(file, O_RDONLY);
     if (fd == EOF) {
-        errexit("open");
+#if DEBUG
+        perror("open");
+#endif
+		exit(EXIT_FAILURE);
     }
 
     // join namespace
     if (setns(fd, CLONE_NEWNS) == EOF) {
-        errexit("setns");
+#if DEBUG
+        perror("setns");
+#endif
+		exit(EXIT_FAILURE);
     }
 
     printf("Joined namespace: %s.\n", file);
@@ -106,7 +118,7 @@ void join_namespace(const pid_t pid, const char *ns) {
     close(fd);
 }
 
-void start_inotify_watcher(int pathc, char *paths[], uint32_t event_mask, int process_eventfd) {
+int start_inotify_watcher(int pathc, char *paths[], uint32_t event_mask, int process_eventfd) {
     int fd, i, poll_num;
     int *wd;
     nfds_t nfds;
@@ -118,28 +130,44 @@ void start_inotify_watcher(int pathc, char *paths[], uint32_t event_mask, int pr
     // create the file descriptor for accessing the inotify API
     fd = inotify_init1(IN_NONBLOCK);
     if (fd == EOF) {
-        errexit("inotify_init1");
+#if DEBUG
+        perror("inotify_init1");
+#endif
+        exit(EXIT_FAILURE);
     }
 
     // allocate memory for watch descriptors
     wd = calloc(pathc, sizeof(int));
     if (wd == NULL) {
-        errexit("calloc");
+#if DEBUG
+        perror("calloc");
+#endif
+        exit(EXIT_FAILURE);
     }
 
-    printf("Listening for events on:\n");
+    printf("  Listening for events on:\n");
 
+	bool do_polling;
     // make directories for events
     for (i = 0; i < pathc; ++i) {
         wd[i] = inotify_add_watch(fd, paths[i], event_mask);
         if (wd[i] == EOF) {
+#if DEBUG
             fprintf(stderr, "Cannot watch '%s'\n", paths[i]);
-            errexit("inotify_add_watch");
-        }
-
-        printf(" - %s\n", paths[i]);
+            perror("inotify_add_watch");
+			//exit(EXIT_FAILURE);
+#endif
+			printf("    [ ] %s\n", paths[i]);
+        } else {
+			printf("    [*] %s\n", paths[i]);
+			do_polling = true;
+		}
     }
     fflush(stdout);
+
+	if (!do_polling) {
+		goto exit;
+	}
 
     // prepare for polling
     nfds = 2;
@@ -157,7 +185,11 @@ void start_inotify_watcher(int pathc, char *paths[], uint32_t event_mask, int pr
             if (errno == EINTR) {
                 continue;
             }
-            errexit("poll");
+#if DEBUG
+            perror("poll");
+			break;
+			//exit(EXIT_FAILURE);
+#endif
         }
 
         if (poll_num > 0) {
@@ -170,28 +202,31 @@ void start_inotify_watcher(int pathc, char *paths[], uint32_t event_mask, int pr
                 uint64_t value;
                 read(fds[1].fd, &value, sizeof(value));
                 if (value & FIMNOTIFY_KILL) {
-                    for (i = 0; i < pathc; ++i) {
-                        int ret = inotify_rm_watch(fd, wd[i]);
-                        if (ret == EOF) {
-                            fprintf(stderr, "Cannot remove '%s'\n", paths[i]);
-                            errexit("inotify_rm_watch");
-                        }
-                    }
                     break;
                 }
             }
         }
     }
 
-    printf("Listening for events stopped.\n");
+    printf("  Listening for events stopped.\n");
     fflush(stdout);
 
     for (i = 0; i < pathc; ++i) {
-        inotify_rm_watch(fd, wd[i]);
+		int ret = inotify_rm_watch(fd, wd[i]);
+		if (ret == EOF) {
+#if DEBUG
+			fprintf(stderr, "Cannot remove '%s'\n", paths[i]);
+			perror("inotify_rm_watch");
+			//exit(EXIT_FAILURE);
+#endif
+		}
     }
 
+exit:
     // close inotify file descriptor
     close(fd);
     free(wd);
+
+    return EXIT_SUCCESS;
 }
 
