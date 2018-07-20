@@ -31,6 +31,14 @@ RUN cd /usr/local/src && \
     make install && \
     cd third_party/protobuf && \
     make install
+# glog
+RUN cd /usr/local/src && \
+    git clone https://github.com/google/glog && \
+    cd glog && \
+    ./autogen.sh && \
+    ./configure && \
+    make -j4 && \
+    make install
 # cmake
 RUN cd /usr/local/src && \
     curl -O https://cmake.org/files/v3.10/cmake-3.10.3.tar.gz && \

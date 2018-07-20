@@ -21,8 +21,13 @@ set(_PROTOBUF_PROTOC $<TARGET_FILE:protobuf::protoc>)
 find_package(gRPC REQUIRED)
 message(STATUS "Using gRPC ${gRPC_VERSION}")
 
+# Find Glog installation
+find_package(Glog REQUIRED)
+message(STATUS "Using glog ${GLOG_FOUND}")
+
 set(_GRPC_GRPCPP_UNSECURE gRPC::grpc++)
 set(_GRPC_CPP_PLUGIN_EXECUTABLE $<TARGET_FILE:gRPC::grpc_cpp_plugin>)
+
 set(_FIM_PROTO_SRCS ${PROJECT_SOURCE_DIR}/fim-proto/c++/fim.pb.cc)
 set(_FIM_GRPC_SRCS ${PROJECT_SOURCE_DIR}/fim-proto/c++/fim.grpc.pb.cc)
 
@@ -36,4 +41,4 @@ add_subdirectory(fimnotify fim-proto)
 
 # Targets
 add_executable(fimd fimd_server.cc fimd_impl.cc fimd_util.cc ${_FIM_PROTO_SRCS} ${_FIM_GRPC_SRCS})
-target_link_libraries(fimd fimnotify pthread ${_PROTOBUF_LIBPROTOBUF} ${_GRPC_GRPCPP_UNSECURE})
+target_link_libraries(fimd fimnotify pthread rt ${_PROTOBUF_LIBPROTOBUF} ${_GRPC_GRPCPP_UNSECURE} ${GLOG_LIBRARIES})

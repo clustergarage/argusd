@@ -1,12 +1,15 @@
 #define _GNU_SOURCE
 #include <errno.h>
 #include <fcntl.h>
+#include <memory.h>
+#include <mqueue.h>
 #include <poll.h>
 #include <sched.h>
 #include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/inotify.h>
 
 #include "fimnotify.h"
@@ -17,7 +20,8 @@
  * `pathc` is the length of `wd` and `paths`
  * `paths` [0->N-1] is the list of watched directories
  */
-static void handle_events(int fd, int *wd, int pathc, char *paths[]) { /**
+static void handle_events(int fd, int *wd, int pathc, char *paths[], mqd_t mq) {
+    /**
      * some systems cannot read integer variables if they are not properly aligned
      * on other systems, incorrect alignment may decrease performance
      * hence, the buffer used for reading from the inotify file descriptor should
@@ -37,8 +41,7 @@ static void handle_events(int fd, int *wd, int pathc, char *paths[]) { /**
 #if DEBUG
             perror("read");
 #endif
-			return;
-			//exit(EXIT_FAILURE);
+            exit(EXIT_FAILURE);
         }
 
         // if the non-blocking `read()` found no events to read, then it
@@ -51,40 +54,31 @@ static void handle_events(int fd, int *wd, int pathc, char *paths[]) { /**
         for (ptr = buf; ptr < buf + len; ptr += sizeof(struct inotify_event) + event->len) {
             event = (const struct inotify_event *)ptr;
 
-            // print event type
-            if (event->mask & IN_ACCESS) printf("IN_ACCESS: ");
-            else if (event->mask & IN_MODIFY) printf("IN_MODIFY: ");
-            else if (event->mask & IN_ATTRIB) printf("IN_ATTRIB: ");
-            else if (event->mask & IN_OPEN) printf("IN_OPEN: ");
-            else if (event->mask & IN_CLOSE_WRITE) printf("IN_CLOSE_WRITE: ");
-            else if (event->mask & IN_CLOSE_NOWRITE) printf("IN_CLOSE_NOWRITE: ");
-            else if (event->mask & IN_CREATE) printf("IN_CREATE: ");
-            else if (event->mask & IN_DELETE) printf("IN_DELETE: ");
-            else if (event->mask & IN_DELETE_SELF) printf("IN_DELETE_SELF: ");
-            else if (event->mask & IN_MOVED_FROM) printf("IN_MOVED_FROM: ");
-            else if (event->mask & IN_MOVED_TO) printf("IN_MOVED_TO: ");
-            else if (event->mask & IN_MOVE_SELF) printf("IN_MOVE_SELF: ");
-            // IN_IGNORED called when oneshot is active
-            else break;
-
-            // print the name of the watched directory
+            // reset message each time
+            struct fimwatch_event fwevent;
+            fwevent.event_mask = event->mask;
+            // name of the watched directory
             for (i = 0; i < pathc; i++) {
                 if (wd[i] == event->wd) {
-                    printf("%s", paths[i]);
+                    //strcat(message, paths[i]);
+                    fwevent.path_name = paths[i];
                     break;
                 }
             }
-
-            // print the name of the file
+            // name of the file
             if (event->len) {
-                printf("/%s", event->name);
+                fwevent.file_name = event->name;
             }
+            fwevent.is_dir = event->mask & IN_ISDIR;
 
-            // @TODO: make file|directory watch configurable
-            // print the type of filesystem object
-            printf(" [%s]\n", (event->mask & IN_ISDIR ? "directory" : "file"));
-
+#if DEBUG
+            printf("[%d] %s/%s [%d]", fwevent.event_mask, fwevent.path_name, fwevent.file_name, fwevent.is_dir);
             fflush(stdout);
+#endif
+
+            if (mq_send(mq, (const char *)&fwevent, sizeof(fwevent), 0) == EOF) {
+                // do stuff
+            }
         }
     }
 }
@@ -100,7 +94,7 @@ void join_namespace(const pid_t pid, const char *ns) {
 #if DEBUG
         perror("open");
 #endif
-		exit(EXIT_FAILURE);
+        exit(EXIT_FAILURE);
     }
 
     // join namespace
@@ -108,11 +102,13 @@ void join_namespace(const pid_t pid, const char *ns) {
 #if DEBUG
         perror("setns");
 #endif
-		exit(EXIT_FAILURE);
+        exit(EXIT_FAILURE);
     }
 
+#if DEBUG
     printf("Joined namespace: %s.\n", file);
     fflush(stdout);
+#endif
 
     // close namespace file descriptor
     close(fd);
@@ -126,6 +122,7 @@ int start_inotify_watcher(int pathc, char *paths[], uint32_t event_mask, int pro
     sigset_t sigmask;
     sigemptyset(&sigmask);
     sigaddset(&sigmask, SIGCHLD);
+    mqd_t mq;
 
     // create the file descriptor for accessing the inotify API
     fd = inotify_init1(IN_NONBLOCK);
@@ -133,7 +130,7 @@ int start_inotify_watcher(int pathc, char *paths[], uint32_t event_mask, int pro
 #if DEBUG
         perror("inotify_init1");
 #endif
-        exit(EXIT_FAILURE);
+        goto exit;
     }
 
     // allocate memory for watch descriptors
@@ -142,32 +139,44 @@ int start_inotify_watcher(int pathc, char *paths[], uint32_t event_mask, int pro
 #if DEBUG
         perror("calloc");
 #endif
-        exit(EXIT_FAILURE);
+        goto exit;
     }
 
-    printf("  Listening for events on:\n");
+    // open mqueue
+    mq = mq_open(MQ_QUEUE_NAME, O_WRONLY);
+    if (mq == EOF) {
+#if DEBUG
+        perror("mq_open");
+#endif
+        goto exit;
+    }
 
-	bool do_polling;
+#if DEBUG
+    printf("  Listening for events on:\n");
+#endif
+
+    bool do_polling;
     // make directories for events
     for (i = 0; i < pathc; ++i) {
         wd[i] = inotify_add_watch(fd, paths[i], event_mask);
         if (wd[i] == EOF) {
 #if DEBUG
-            fprintf(stderr, "Cannot watch '%s'\n", paths[i]);
+            fprintf(stderr, "Cannot watch '%s' (%d)\n", paths[i], errno);
             perror("inotify_add_watch");
-			//exit(EXIT_FAILURE);
+            printf("    [ ] %s\n", paths[i]);
 #endif
-			printf("    [ ] %s\n", paths[i]);
         } else {
-			printf("    [*] %s\n", paths[i]);
-			do_polling = true;
-		}
+#if DEBUG
+            printf("    [*] %s\n", paths[i]);
+#endif
+            do_polling = true;
+        }
     }
     fflush(stdout);
 
-	if (!do_polling) {
-		goto exit;
-	}
+    if (!do_polling) {
+        goto exit;
+    }
 
     // prepare for polling
     nfds = 2;
@@ -187,20 +196,20 @@ int start_inotify_watcher(int pathc, char *paths[], uint32_t event_mask, int pro
             }
 #if DEBUG
             perror("poll");
-			break;
-			//exit(EXIT_FAILURE);
 #endif
+            goto exit;
         }
 
         if (poll_num > 0) {
             if (fds[0].revents & POLLIN) {
                 // inotify events are available
-                handle_events(fd, wd, pathc, paths);
+                handle_events(fd, wd, pathc, paths, mq);
             }
 
             if (fds[1].revents & POLLIN) {
+                // anonymous pipe events are available
                 uint64_t value;
-                read(fds[1].fd, &value, sizeof(value));
+                read(fds[1].fd, &value, sizeof(uint64_t));
                 if (value & FIMNOTIFY_KILL) {
                     break;
                 }
@@ -208,25 +217,34 @@ int start_inotify_watcher(int pathc, char *paths[], uint32_t event_mask, int pro
         }
     }
 
+#if DEBUG
     printf("  Listening for events stopped.\n");
     fflush(stdout);
+#endif
 
     for (i = 0; i < pathc; ++i) {
-		int ret = inotify_rm_watch(fd, wd[i]);
-		if (ret == EOF) {
+        int ret = inotify_rm_watch(fd, wd[i]);
 #if DEBUG
-			fprintf(stderr, "Cannot remove '%s'\n", paths[i]);
-			perror("inotify_rm_watch");
-			//exit(EXIT_FAILURE);
+        if (ret == EOF) {
+            fprintf(stderr, "Cannot remove '%s' (%d)\n", paths[i], errno);
+            perror("inotify_rm_watch");
+        }
 #endif
-		}
     }
 
 exit:
     // close inotify file descriptor
-    close(fd);
-    free(wd);
+    if (fd != EOF) {
+        close(fd);
+    }
+    // deallocate memory for watch descriptors
+    if (wd != NULL) {
+        free(wd);
+    }
+    // close message queue
+    if (mq != EOF) {
+        mq_close(mq);
+    }
 
-    return EXIT_SUCCESS;
+    return errno ? EXIT_FAILURE : EXIT_SUCCESS;
 }
-

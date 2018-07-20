@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 
+#include <glog/logging.h>
 #include <grpc/grpc.h>
 #include <grpc++/server.h>
 #include <grpc++/server_builder.h>
@@ -17,6 +18,11 @@ using grpc::ServerBuilder;
 #define PORT 50051
 
 int main(int argc, char **argv) {
+    google::InitGoogleLogging(argv[0]);
+    google::InstallFailureSignalHandler();
+    FLAGS_stderrthreshold = google::INFO;
+    FLAGS_colorlogtostderr = true;
+
     stringstream ss;
     ss << "0.0.0.0:" << PORT;
     string server_address(ss.str());
@@ -27,7 +33,9 @@ int main(int argc, char **argv) {
     builder.RegisterService(&service);
 
     unique_ptr<grpc::Server> server(builder.BuildAndStart());
-    cout << "Server listening on " << server_address << endl;
+    LOG(INFO) << "Server listening on " << server_address;
     server->Wait();
+
+    google::ShutdownGoogleLogging();
     return 0;
 }

@@ -8,6 +8,8 @@
 #include "fimd_util.h"
 #include "fim-proto/c++/fim.grpc.pb.h"
 
+#define MESSAGE_SIZE 2048
+
 class FimdImpl final : public fim::Fimd::Service {
 public:
     explicit FimdImpl() = default;
@@ -23,6 +25,7 @@ private:
 	uint32_t getEventMaskFromSubject(const fim::FimWatcherSubject subject);
 	void createInotifyWatcher(const fim::FimWatcherSubject subject, char **patharr, uint32_t event_mask,
 		google::protobuf::RepeatedField<google::protobuf::int32> *procFds);
+    static void startMessageQueue();
 	void sendKillSignalToWatcher(std::shared_ptr<fim::FimdHandle> watcher);
     void eraseEventProcessfd(google::protobuf::RepeatedField<google::protobuf::int32> *eventProcessfds, const int processfd);
 
