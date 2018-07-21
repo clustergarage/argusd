@@ -34,11 +34,11 @@ set(_FIM_GRPC_SRCS ${PROJECT_SOURCE_DIR}/fim-proto/c++/fim.grpc.pb.cc)
 include_directories(
   # Include generated *.pb.h files
   ${CMAKE_CURRENT_BINARY_DIR}
-  ${PROJECT_SOURCE_DIR}/fimnotify
+  ${PROJECT_SOURCE_DIR}/lib
   ${PROJECT_SOURCE_DIR}/fim-proto
 )
-add_subdirectory(fimnotify fim-proto)
+add_subdirectory(lib fim-proto)
 
 # Targets
 add_executable(fimd fimd_server.cc fimd_impl.cc fimd_util.cc ${_FIM_PROTO_SRCS} ${_FIM_GRPC_SRCS})
-target_link_libraries(fimd fimnotify pthread rt ${_PROTOBUF_LIBPROTOBUF} ${_GRPC_GRPCPP_UNSECURE} ${GLOG_LIBRARIES})
+target_link_libraries(fimd libfimnotify pthread rt ${_PROTOBUF_LIBPROTOBUF} ${_GRPC_GRPCPP_UNSECURE} ${GLOG_LIBRARIES})

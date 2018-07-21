@@ -15,7 +15,7 @@
 #include "fimd_impl.h"
 #include "fimd_util.h"
 extern "C" {
-#include "fimnotify/fimnotify.h"
+#include "lib/fimnotify.h"
 }
 
 using namespace std;
@@ -220,6 +220,7 @@ void FimdImpl::startMessageQueue() {
             // IN_IGNORED called when oneshot is active
             //else break;
 
+            // @TODO: replace /proc/$PID/root for log-readability
             ss << ": " << fwevent->path_name << "/" << fwevent->file_name <<
                 " [" << (fwevent->is_dir & IN_ISDIR ? "directory" : "file") << "]";
             LOG(INFO) << ss.str();
