@@ -1,1 +1,1 @@
-add_library(libfimnotify fimnotify.c)
+add_library(fimnotify fimnotify.c)
