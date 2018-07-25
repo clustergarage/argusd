@@ -2,17 +2,30 @@ cmake_minimum_required(VERSION 3.10)
 project(FimD C CXX)
 
 include(ExternalProject)
-set(INSTALL_DIR "${CMAKE_CURRENT_BINARY_DIR}/libs")
 
 set(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS} -std=c++17)
 set(CMAKE_EXE_LINKER_FLAGS -static)
 
-find_package(Threads)
+find_package(Threads REQUIRED)
+
+# Builds protobuf project from the git repo
+ExternalProject_Add(c-ares
+  PREFIX c-ares
+  GIT_REPOSITORY https://github.com/c-ares/c-ares
+  GIT_TAG cares-1_14_0
+  CMAKE_CACHE_ARGS
+    -DCARES_SHARED:BOOL=OFF
+    -DCARES_STATIC:BOOL=ON
+    -DCARES_STATIC_PIC:BOOL=ON
+    -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_CURRENT_BINARY_DIR}/c-ares
+)
 
 # Builds protobuf project from the git repo
 ExternalProject_Add(zlib
   PREFIX zlib
   GIT_REPOSITORY https://github.com/madler/zlib
+  #GIT_TAG
+  UPDATE_COMMAND ""
   CMAKE_CACHE_ARGS
     -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_CURRENT_BINARY_DIR}/zlib
 )
@@ -80,6 +93,15 @@ ExternalProject_Add(gflags
     -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_CURRENT_BINARY_DIR}/gflags
 )
 
+# if OPENSSL_ROOT_DIR is set, propagate that hint path to the external projects with OpenSSL dependency.
+set(_CMAKE_ARGS_OPENSSL_ROOT_DIR "")
+if (OPENSSL_ROOT_DIR)
+  set(_CMAKE_ARGS_OPENSSL_ROOT_DIR -DOPENSSL_ROOT_DIR:PATH=${OPENSSL_ROOT_DIR})
+endif()
+
+# the location where protobuf-config.cmake will be installed varies by platform
+set(_FINDPACKAGE_PROTOBUF_CONFIG_DIR ${CMAKE_CURRENT_BINARY_DIR}/protobuf/lib/cmake/protobuf)
+
 # Builds gRPC based on locally checked-out sources and set arguments so that all the dependencies
 # are correctly located
 ExternalProject_Add(grpc
@@ -114,15 +136,14 @@ ExternalProject_Add(glog
     -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_CURRENT_BINARY_DIR}/glog
 )
 
-set(_ZLIB_LIBZLIB ${CMAKE_CURRENT_BINARY_DIR}/zlib/lib/libz.a)
 set(_CARES_LIBCARES ${CMAKE_CURRENT_BINARY_DIR}/c-ares/lib/libcares.a)
+set(_ZLIB_LIBZLIB ${CMAKE_CURRENT_BINARY_DIR}/zlib/lib/libz.a)
 set(_PROTOBUF_LIBPROTOBUF ${CMAKE_CURRENT_BINARY_DIR}/protobuf/lib/libprotobuf.a)
 set(_GFLAGS_LIBGFLAGS ${CMAKE_CURRENT_BINARY_DIR}/gflags/lib/libgflags.a)
 set(_GRPC_LIBGRPCPP ${CMAKE_CURRENT_BINARY_DIR}/grpc/lib/libgrpc++_unsecure.a
   ${CMAKE_CURRENT_BINARY_DIR}/grpc/lib/libgrpc_unsecure.a
   ${CMAKE_CURRENT_BINARY_DIR}/grpc/lib/libgpr.a
-  ${CMAKE_CURRENT_BINARY_DIR}/grpc/lib/libaddress_sorting.a
-)
+  ${CMAKE_CURRENT_BINARY_DIR}/grpc/lib/libaddress_sorting.a)
 set(_GLOG_LIBGLOG ${CMAKE_CURRENT_BINARY_DIR}/glog/lib/libglog.a)
 
 include_directories(
@@ -154,10 +175,15 @@ target_link_libraries(fimd
   fimnotify
   ${_GRPC_LIBGRPCPP}
   ${_GLOG_LIBGLOG}
-  ${_PROTOBUF_LIBPROTOBUF}
   ${_GFLAGS_LIBGFLAGS}
+  ${_PROTOBUF_LIBPROTOBUF}
   ${_ZLIB_LIBZLIB}
   ${_CARES_LIBCARES}
   -Wl,--whole-archive ${CMAKE_THREAD_LIBS_INIT} -Wl,--no-whole-archive
   rt
+)
+
+# strip unnecessary symbols
+add_custom_command(TARGET fimd POST_BUILD
+  COMMAND strip -s $<TARGET_FILE:fimd>
 )
