@@ -44,7 +44,7 @@ ExternalProject_Add(protobuf
 # the location where protobuf-config.cmake will be installed varies by platform
 set(_FINDPACKAGE_PROTOBUF_CONFIG_DIR ${CMAKE_CURRENT_BINARY_DIR}/protobuf/lib/cmake/protobuf)
 
-# Builds protobuf project from the git repo
+# Builds c-ares project from the git repo
 ExternalProject_Add(c-ares
   PREFIX c-ares
   GIT_REPOSITORY https://github.com/c-ares/c-ares
@@ -62,7 +62,7 @@ if (OPENSSL_ROOT_DIR)
   set(_CMAKE_ARGS_OPENSSL_ROOT_DIR -DOPENSSL_ROOT_DIR:PATH=${OPENSSL_ROOT_DIR})
 endif()
 
-# Builds protobuf project from the git repo
+# Builds gflags project from the git repo
 ExternalProject_Add(gflags
   PREFIX gflags
   GIT_REPOSITORY https://github.com/gflags/gflags
