@@ -235,7 +235,10 @@ void FimdImpl::sendKillSignalToWatcher(shared_ptr<FimdHandle> watcher) {
     // kill existing watcher polls
     uint64_t value = FIMNOTIFY_KILL;
     for_each(watcher->processeventfd().cbegin(), watcher->processeventfd().cend(), [&](const int processfd) {
-        write(processfd, &value, sizeof(uint64_t));
+        int ret = write(processfd, &value, sizeof(uint64_t));
+        if (ret == EOF) {
+            // do stuff?
+        }
         eraseEventProcessfd(watcher->mutable_processeventfd(), processfd);
     });
 }

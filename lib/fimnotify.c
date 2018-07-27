@@ -37,7 +37,7 @@ static void handle_events(int fd, int *wd, int pathc, char *paths[], mqd_t mq) {
     for (;;) {
         // read some events
         len = read(fd, buf, sizeof(buf));
-        if (len == -1 && errno != EAGAIN) {
+        if (len == EOF && errno != EAGAIN) {
 #if DEBUG
             perror("read");
 #endif
@@ -209,8 +209,8 @@ int start_inotify_watcher(int pathc, char *paths[], uint32_t event_mask, int pro
             if (fds[1].revents & POLLIN) {
                 // anonymous pipe events are available
                 uint64_t value;
-                read(fds[1].fd, &value, sizeof(uint64_t));
-                if (value & FIMNOTIFY_KILL) {
+                int len = read(fds[1].fd, &value, sizeof(uint64_t));
+                if (len != EOF && value & FIMNOTIFY_KILL) {
                     break;
                 }
             }
