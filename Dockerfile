@@ -1,8 +1,7 @@
 FROM ubuntu:bionic as builder
 RUN apt update && \
-  apt install -y git tar wget \
-    gcc g++ cmake make \
-    perl libssl-dev
+  apt install -y git perl tar wget \
+    gcc g++ cmake make
 # do this in a new folder `dockerbuild`; `build` is ignored via .dockerignore
 # for builds outside docker, so we need to make sure we name this something
 # other than `build`

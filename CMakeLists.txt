@@ -14,8 +14,23 @@ set(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS} -std=c++17)
 set(CMAKE_EXE_LINKER_FLAGS -static)
 set(CMAKE_BUILD_TYPE Release)
 
-find_package(OpenSSL REQUIRED)
 find_package(Threads REQUIRED)
+
+ExternalProject_Add(openssl
+  GIT_REPOSITORY https://github.com/openssl/openssl
+  GIT_TAG OpenSSL_1_1_0
+  SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/openssl/src
+  BUILD_IN_SOURCE 1
+  CONFIGURE_COMMAND sh <SOURCE_DIR>/config no-shared no-async
+  BUILD_COMMAND make -j4
+  INSTALL_COMMAND ""
+  TEST_COMMAND ""
+)
+ExternalProject_Get_Property(openssl BINARY_DIR)
+set(OPENSSL_FOUND TRUE)
+set(OPENSSL_ROOT_DIR ${CMAKE_CURRENT_BINARY_DIR}/openssl/src)
+set(OPENSSL_INCLUDE_DIR ${OPENSSL_ROOT_DIR}/include)
+set(OPENSSL_CRYPTO_LIBRARY ${OPENSSL_ROOT_DIR}/lib/libcrypto.a)
 
 # Builds c-ares project from the git repo
 ExternalProject_Add(c-ares
@@ -26,7 +41,7 @@ ExternalProject_Add(c-ares
     -DCARES_SHARED:BOOL=OFF
     -DCARES_STATIC:BOOL=ON
     -DCARES_STATIC_PIC:BOOL=ON
-    -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_CURRENT_BINARY_DIR}/c-ares
+    -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
 )
 
 # Builds zlib project from the git repo
@@ -36,7 +51,7 @@ ExternalProject_Add(zlib
   #GIT_TAG
   UPDATE_COMMAND ""
   CMAKE_CACHE_ARGS
-    -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_CURRENT_BINARY_DIR}/zlib
+    -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
 )
 
 ## Builds protobuf project from the git submodule
@@ -47,8 +62,6 @@ ExternalProject_Add(protobuf
   GIT_TAG v3.5.1
   SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/protobuf/src/protobuf
   BUILD_IN_SOURCE 1
-  #SOURCE_SUBDIR cmake/ # Requires CMake 3.7, this will allow removal of CONFIGURE_COMMAND
-  # CONFIGURE_COMMAND resets some settings made in CMAKE_CACHE_ARGS and the generator used
   CONFIGURE_COMMAND ${CMAKE_COMMAND} cmake/
     -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF
     -Dprotobuf_BUILD_TESTS:BOOL=OFF
@@ -59,7 +72,7 @@ ExternalProject_Add(protobuf
     -Dprotobuf_WITH_ZLIB:BOOL=OFF
     -Dprotobuf_MSVC_STATIC_RUNTIME:BOOL=OFF
     -DZLIB_ROOT:STRING=${ZLIB_INSTALL}
-    -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_CURRENT_BINARY_DIR}/protobuf
+    -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
 )
 ExternalProject_Get_Property(protobuf BINARY_DIR)
 set(PROTOBUF_FOUND TRUE)
@@ -82,23 +95,16 @@ ExternalProject_Add(gflags
     -DBUILD_gflags_LIB:BOOL=ON
     -DINSTALL_HEADERS:BOOL=ON
     -DGFLAGS_NAMESPACE:STRING=google
-    -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_CURRENT_BINARY_DIR}/gflags
+    -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
 )
-
-# if OPENSSL_ROOT_DIR is set, propagate that hint path to the external projects with OpenSSL dependency.
-set(_CMAKE_ARGS_OPENSSL_ROOT_DIR "")
-if (OPENSSL_ROOT_DIR)
-  set(_CMAKE_ARGS_OPENSSL_ROOT_DIR -DOPENSSL_ROOT_DIR:PATH=${OPENSSL_ROOT_DIR})
-endif()
 
 # Builds gRPC based on locally checked-out sources and set arguments so that all the dependencies
 # are correctly located
 ExternalProject_Add(grpc
   PREFIX grpc
-  DEPENDS c-ares protobuf zlib
+  DEPENDS c-ares openssl protobuf zlib
   GIT_REPOSITORY https://github.com/grpc/grpc
   GIT_TAG v1.13.1
-  BUILD_IN_SOURCE 1
   CMAKE_CACHE_ARGS
     -DgRPC_INSTALL:BOOL=ON
     -DgRPC_BUILD_TESTS:BOOL=OFF
@@ -110,8 +116,8 @@ ExternalProject_Add(grpc
     -DgRPC_CARES_PROVIDER:STRING=package
     -Dc-ares_DIR:PATH=${CMAKE_CURRENT_BINARY_DIR}/c-ares/lib/cmake/c-ares
     -DgRPC_SSL_PROVIDER:STRING=package
-    ${_CMAKE_ARGS_OPENSSL_ROOT_DIR}
-    -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_CURRENT_BINARY_DIR}/grpc
+    -DOPENSSL_ROOT_DIR:PATH=${OPENSSL_ROOT_DIR}
+    -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
 )
 
 # Builds glog project from the git repo
@@ -123,7 +129,7 @@ ExternalProject_Add(glog
   CMAKE_ARGS
     -DCMAKE_CXX_FLAGS="-Wl,--eh-frame-hdr"
   CMAKE_CACHE_ARGS
-    -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_CURRENT_BINARY_DIR}/glog
+    -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
 )
 
 set(_CARES_LIBCARES ${CMAKE_CURRENT_BINARY_DIR}/c-ares/lib/libcares.a)
@@ -162,12 +168,7 @@ add_executable(fimd
   ${_FIM_PROTO_SRCS}
   ${_FIM_GRPC_SRCS}
 )
-add_dependencies(fimd fimnotify
-  grpc
-  glog
-  gflags
-  protobuf
-)
+add_dependencies(fimd fimnotify grpc glog)
 target_link_libraries(fimd
   fimnotify
   ${_gRPC_LIBGRPCPP}
@@ -182,5 +183,4 @@ target_link_libraries(fimd
 
 # strip unnecessary symbols
 add_custom_command(TARGET fimd POST_BUILD
-  COMMAND strip -s $<TARGET_FILE:fimd>
-)
+  COMMAND strip -s $<TARGET_FILE:fimd>)
