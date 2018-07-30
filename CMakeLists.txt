@@ -1,10 +1,3 @@
-# TODO:
-# - glibc version (get rid of warning); smaller variants
-#   - configure => --enable-static-nss
-# - all installs should only install locally in build/ dir (not /usr/lib...)
-# - set internal make -jN from env var? $(nproc --all)
-# - disable tests to speed up?
-
 cmake_minimum_required(VERSION 3.10)
 project(FimD C CXX)
 
@@ -15,22 +8,6 @@ set(CMAKE_EXE_LINKER_FLAGS -static)
 set(CMAKE_BUILD_TYPE Release)
 
 find_package(Threads REQUIRED)
-
-ExternalProject_Add(openssl
-  GIT_REPOSITORY https://github.com/openssl/openssl
-  GIT_TAG OpenSSL_1_1_0
-  SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/openssl/src
-  BUILD_IN_SOURCE 1
-  CONFIGURE_COMMAND sh <SOURCE_DIR>/config no-shared no-async
-  BUILD_COMMAND make -j4
-  INSTALL_COMMAND ""
-  TEST_COMMAND ""
-)
-ExternalProject_Get_Property(openssl BINARY_DIR)
-set(OPENSSL_FOUND TRUE)
-set(OPENSSL_ROOT_DIR ${CMAKE_CURRENT_BINARY_DIR}/openssl/src)
-set(OPENSSL_INCLUDE_DIR ${OPENSSL_ROOT_DIR}/include)
-set(OPENSSL_CRYPTO_LIBRARY ${OPENSSL_ROOT_DIR}/lib/libcrypto.a)
 
 # Builds c-ares project from the git repo
 ExternalProject_Add(c-ares
@@ -48,13 +25,34 @@ ExternalProject_Add(c-ares
 ExternalProject_Add(zlib
   PREFIX zlib
   GIT_REPOSITORY https://github.com/madler/zlib
-  #GIT_TAG
+  GIT_TAG v1.2.11
   UPDATE_COMMAND ""
   CMAKE_CACHE_ARGS
     -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
 )
 
-## Builds protobuf project from the git submodule
+# Builds openssl project from the git repo
+ExternalProject_Add(openssl
+  PREFIX openssl
+  GIT_REPOSITORY https://github.com/openssl/openssl
+  GIT_TAG OpenSSL_1_1_0
+  BUILD_IN_SOURCE 1
+  CONFIGURE_COMMAND ./config
+    --prefix=${CMAKE_CURRENT_BINARY_DIR}/openssl
+    --openssldir=${CMAKE_CURRENT_BINARY_DIR}/openssl
+    -fPIC
+    no-async no-shared no-unit-test
+  INSTALL_COMMAND make install_sw
+  CMAKE_CACHE_ARGS
+    -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
+)
+ExternalProject_Get_Property(openssl BINARY_DIR)
+set(OPENSSL_FOUND TRUE)
+set(OPENSSL_ROOT_DIR ${CMAKE_CURRENT_BINARY_DIR}/openssl)
+set(OPENSSL_INCLUDE_DIR ${OPENSSL_ROOT_DIR}/include)
+set(OPENSSL_CRYPTO_LIBRARY ${OPENSSL_ROOT_DIR}/lib/libcrypto.a)
+
+## Builds protobuf project from the git repo
 ExternalProject_Add(protobuf
   PREFIX protobuf
   DEPENDS zlib
@@ -98,8 +96,7 @@ ExternalProject_Add(gflags
     -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
 )
 
-# Builds gRPC based on locally checked-out sources and set arguments so that all the dependencies
-# are correctly located
+# Builds grpc project from the git repo
 ExternalProject_Add(grpc
   PREFIX grpc
   DEPENDS c-ares openssl protobuf zlib
@@ -116,6 +113,7 @@ ExternalProject_Add(grpc
     -DgRPC_CARES_PROVIDER:STRING=package
     -Dc-ares_DIR:PATH=${CMAKE_CURRENT_BINARY_DIR}/c-ares/lib/cmake/c-ares
     -DgRPC_SSL_PROVIDER:STRING=package
+    -DOPENSSL_USE_STATIC_LIBS:BOOL=ON
     -DOPENSSL_ROOT_DIR:PATH=${OPENSSL_ROOT_DIR}
     -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
 )
