@@ -4,9 +4,6 @@
 #include <string>
 #include <sys/eventfd.h>
 #include <sys/inotify.h>
-#include <thread>
-#include <vector>
-#include <mqueue.h>
 
 #include <glog/logging.h>
 #include <grpc/grpc.h>
@@ -44,6 +41,8 @@ Status FimdImpl::CreateWatch(ServerContext *context, const FimdConfig *request, 
     } else {
         LOG(INFO) << "Updating inotify watcher...";
 
+        // stop existing message queue
+        sendExitMessageToMessageQueue(watcher);
         // stop existing watcher polling
         sendKillSignalToWatcher(watcher);
         watcher->clear_processeventfd();
@@ -58,6 +57,7 @@ Status FimdImpl::CreateWatch(ServerContext *context, const FimdConfig *request, 
         });
         response->add_pid(pid);
     });
+    response->set_mqfd((google::protobuf::int32)createMessageQueue());
 
     if (watcher == nullptr) {
         // store new watcher
@@ -67,12 +67,6 @@ Status FimdImpl::CreateWatch(ServerContext *context, const FimdConfig *request, 
             watcher->add_processeventfd(processfd);
         });
     }
-
-    // start message queue
-    packaged_task<void()> queue(startMessageQueue);
-    thread queueThread(move(queue));
-    // start as daemon process
-    queueThread.detach();
 
     return Status::OK;
 }
@@ -87,6 +81,9 @@ Status FimdImpl::DestroyWatch(ServerContext *context, const FimdConfig *request,
 
     shared_ptr<FimdHandle> watcher = findFimdWatcherByPids(request->hostuid(), pids);
     if (watcher != nullptr) {
+        // stop existing message queue
+        sendExitMessageToMessageQueue(watcher);
+        // stop existing watcher polling
         sendKillSignalToWatcher(watcher);
     }
     m_watchers.erase(remove(m_watchers.begin(), m_watchers.end(), watcher), m_watchers.end());
@@ -179,14 +176,9 @@ void FimdImpl::createInotifyWatcher(const FimWatcherSubject subject, char **path
     }
 }
 
-void FimdImpl::startMessageQueue() {
+mqd_t FimdImpl::createMessageQueue() {
     mqd_t mq;
     mq_attr attr;
-    fimwatch_event *fwevent;
-    char buffer[MQ_MAX_SIZE + 1];
-    ssize_t bytes_read;
-    bool done;
-
     // initialize the queue attributes
     attr.mq_flags = 0;
     attr.mq_maxmsg = 10;
@@ -194,11 +186,27 @@ void FimdImpl::startMessageQueue() {
     attr.mq_curmsgs = 0;
 
     // create the message queue
-    mq = mq_open(MQ_QUEUE_NAME, O_CREAT | O_RDONLY, 0644, &attr);
+    mq = mq_open(MQ_QUEUE_NAME, O_CREAT | O_RDWR, 0644, &attr);
+
+    // start message queue
+    packaged_task<void(mqd_t)> queue(startMessageQueue);
+    thread queueThread(move(queue), mq);
+    // start as daemon process
+    queueThread.detach();
+
+    return mq;
+}
+
+void FimdImpl::startMessageQueue(mqd_t mq) {
+    fimwatch_event *fwevent;
+    char buffer[MQ_MAX_SIZE + 1];
+    ssize_t bytes_read;
+    bool done;
 
     do {
         bytes_read = mq_receive(mq, buffer, MQ_MAX_SIZE, NULL);
         buffer[bytes_read] = '\0';
+
         if (!strncmp(buffer, MQ_EXIT_MESSAGE, strlen(MQ_EXIT_MESSAGE))) {
             done = true;
         } else {
@@ -249,5 +257,11 @@ void FimdImpl::eraseEventProcessfd(RepeatedField<google::protobuf::int32> *event
             eventProcessfds->erase(it);
             break;
         }
+    }
+}
+
+void FimdImpl::sendExitMessageToMessageQueue(shared_ptr<FimdHandle> watcher) {
+    if (mq_send(watcher->mqfd(), MQ_EXIT_MESSAGE, strlen(MQ_EXIT_MESSAGE), 1) == EOF) {
+        // do stuff
     }
 }

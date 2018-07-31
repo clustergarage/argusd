@@ -76,6 +76,7 @@ static void handle_events(int fd, int *wd, int pathc, char *paths[], mqd_t mq) {
             fflush(stdout);
 #endif
 
+            // @TODO: document this
             if (mq_send(mq, (const char *)&fwevent, sizeof(fwevent), 0) == EOF) {
                 // do stuff
             }

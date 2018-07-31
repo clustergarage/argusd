@@ -2,13 +2,12 @@
 #define _FIMDIMPL_H
 
 #include <future>
+#include <mqueue.h>
 #include <thread>
 #include <vector>
 
 #include "fimd_util.h"
 #include "fim-proto/c++/fim.grpc.pb.h"
-
-#define MESSAGE_SIZE 2048
 
 class FimdImpl final : public fim::Fimd::Service {
 public:
@@ -21,17 +20,19 @@ public:
 private:
     std::vector<int> getPidsFromRequest(const fim::FimdConfig *request);
     std::shared_ptr<fim::FimdHandle> findFimdWatcherByPids(const std::string hostUid, const std::vector<int> pids);
-	char **getPathArrayFromSubject(const int pid, const fim::FimWatcherSubject subject);
-	uint32_t getEventMaskFromSubject(const fim::FimWatcherSubject subject);
-	void createInotifyWatcher(const fim::FimWatcherSubject subject, char **patharr, uint32_t event_mask,
-		google::protobuf::RepeatedField<google::protobuf::int32> *procFds);
-    static void startMessageQueue();
-	void sendKillSignalToWatcher(std::shared_ptr<fim::FimdHandle> watcher);
+    char **getPathArrayFromSubject(const int pid, const fim::FimWatcherSubject subject);
+    uint32_t getEventMaskFromSubject(const fim::FimWatcherSubject subject);
+    void createInotifyWatcher(const fim::FimWatcherSubject subject, char **patharr, uint32_t event_mask,
+        google::protobuf::RepeatedField<google::protobuf::int32> *procFds);
+    mqd_t createMessageQueue();
+    static void startMessageQueue(mqd_t mq);
+    void sendKillSignalToWatcher(std::shared_ptr<fim::FimdHandle> watcher);
     void eraseEventProcessfd(google::protobuf::RepeatedField<google::protobuf::int32> *eventProcessfds, const int processfd);
+    void sendExitMessageToMessageQueue(std::shared_ptr<fim::FimdHandle> watcher);
 
-	inline const std::string cleanContainerId(const std::string &containerId) const {
-		return FimdUtil::eraseSubstr(containerId, "docker://");
-	}
+    inline const std::string cleanContainerId(const std::string &containerId) const {
+        return FimdUtil::eraseSubstr(containerId, "docker://");
+    }
 
 private:
     std::vector<std::shared_ptr<fim::FimdHandle>> m_watchers;
