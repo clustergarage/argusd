@@ -60,7 +60,6 @@ static void handle_events(int fd, int *wd, int pathc, char *paths[], mqd_t mq) {
             // name of the watched directory
             for (i = 0; i < pathc; i++) {
                 if (wd[i] == event->wd) {
-                    //strcat(message, paths[i]);
                     fwevent.path_name = paths[i];
                     break;
                 }
@@ -72,13 +71,15 @@ static void handle_events(int fd, int *wd, int pathc, char *paths[], mqd_t mq) {
             fwevent.is_dir = event->mask & IN_ISDIR;
 
 #if DEBUG
-            printf("[%d] %s/%s [%d]", fwevent.event_mask, fwevent.path_name, fwevent.file_name, fwevent.is_dir);
+            printf("[%d]\t%s/%s\t[%d]\n", fwevent.event_mask, fwevent.path_name, fwevent.file_name, fwevent.is_dir);
             fflush(stdout);
 #endif
 
             // @TODO: document this
             if (mq_send(mq, (const char *)&fwevent, sizeof(fwevent), 0) == EOF) {
-                // do stuff
+#if DEBUG
+                perror("mq_send");
+#endif
             }
         }
     }

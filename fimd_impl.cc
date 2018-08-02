@@ -49,6 +49,8 @@ Status FimdImpl::CreateWatch(ServerContext *context, const FimdConfig *request, 
     }
 
     response->set_hostuid(request->hostuid().c_str());
+    response->set_mqfd((google::protobuf::int32)createMessageQueue());
+
     for_each(pids.cbegin(), pids.cend(), [&](const int pid) {
         for_each(request->subject().cbegin(), request->subject().cend(), [&](const FimWatcherSubject subject) {
             // @TODO: check if any watchers are started, if not, don't add to response
@@ -57,7 +59,6 @@ Status FimdImpl::CreateWatch(ServerContext *context, const FimdConfig *request, 
         });
         response->add_pid(pid);
     });
-    response->set_mqfd((google::protobuf::int32)createMessageQueue());
 
     if (watcher == nullptr) {
         // store new watcher
@@ -187,6 +188,11 @@ mqd_t FimdImpl::createMessageQueue() {
 
     // create the message queue
     mq = mq_open(MQ_QUEUE_NAME, O_CREAT | O_RDWR, 0644, &attr);
+    if (mq == EOF) {
+#if DEBUG
+        perror("mq_open");
+#endif
+    }
 
     // start message queue
     packaged_task<void(mqd_t)> queue(startMessageQueue);
@@ -201,7 +207,7 @@ void FimdImpl::startMessageQueue(mqd_t mq) {
     fimwatch_event *fwevent;
     char buffer[MQ_MAX_SIZE + 1];
     ssize_t bytes_read;
-    bool done;
+    bool done = false;
 
     do {
         bytes_read = mq_receive(mq, buffer, MQ_MAX_SIZE, NULL);
@@ -213,20 +219,18 @@ void FimdImpl::startMessageQueue(mqd_t mq) {
             fwevent = (struct fimwatch_event *)buffer;
             stringstream ss;
 
-            if (fwevent->event_mask & IN_ACCESS) ss << "IN_ACCESS";
-            else if (fwevent->event_mask & IN_MODIFY) ss << "IN_MODIFY";
-            else if (fwevent->event_mask & IN_ATTRIB) ss << "IN_ATTRIB";
-            else if (fwevent->event_mask & IN_OPEN) ss << "IN_OPEN";
-            else if (fwevent->event_mask & IN_CLOSE_WRITE) ss << "IN_CLOSE_WRITE";
+            if (fwevent->event_mask & IN_ACCESS)             ss << "IN_ACCESS";
+            else if (fwevent->event_mask & IN_MODIFY)        ss << "IN_MODIFY";
+            else if (fwevent->event_mask & IN_ATTRIB)        ss << "IN_ATTRIB";
+            else if (fwevent->event_mask & IN_OPEN)          ss << "IN_OPEN";
+            else if (fwevent->event_mask & IN_CLOSE_WRITE)   ss << "IN_CLOSE_WRITE";
             else if (fwevent->event_mask & IN_CLOSE_NOWRITE) ss << "IN_CLOSE_NOWRITE";
-            else if (fwevent->event_mask & IN_CREATE) ss << "IN_CREATE";
-            else if (fwevent->event_mask & IN_DELETE) ss << "IN_DELETE";
-            else if (fwevent->event_mask & IN_DELETE_SELF) ss << "IN_DELETE_SELF";
-            else if (fwevent->event_mask & IN_MOVED_FROM) ss << "IN_MOVED_FROM";
-            else if (fwevent->event_mask & IN_MOVED_TO) ss << "IN_MOVED_TO";
-            else if (fwevent->event_mask & IN_MOVE_SELF) ss << "IN_MOVE_SELF";
-            // IN_IGNORED called when oneshot is active
-            //else break;
+            else if (fwevent->event_mask & IN_CREATE)        ss << "IN_CREATE";
+            else if (fwevent->event_mask & IN_DELETE)        ss << "IN_DELETE";
+            else if (fwevent->event_mask & IN_DELETE_SELF)   ss << "IN_DELETE_SELF";
+            else if (fwevent->event_mask & IN_MOVED_FROM)    ss << "IN_MOVED_FROM";
+            else if (fwevent->event_mask & IN_MOVED_TO)      ss << "IN_MOVED_TO";
+            else if (fwevent->event_mask & IN_MOVE_SELF)     ss << "IN_MOVE_SELF";
 
             // @TODO: replace /proc/$PID/root for log-readability
             ss << ": " << fwevent->path_name << "/" << fwevent->file_name <<
@@ -243,9 +247,8 @@ void FimdImpl::sendKillSignalToWatcher(shared_ptr<FimdHandle> watcher) {
     // kill existing watcher polls
     uint64_t value = FIMNOTIFY_KILL;
     for_each(watcher->processeventfd().cbegin(), watcher->processeventfd().cend(), [&](const int processfd) {
-        int ret = write(processfd, &value, sizeof(uint64_t));
-        if (ret == EOF) {
-            // do stuff?
+        if (write(processfd, &value, sizeof(uint64_t)) == EOF) {
+            // do stuff
         }
         eraseEventProcessfd(watcher->mutable_processeventfd(), processfd);
     });
@@ -261,6 +264,7 @@ void FimdImpl::eraseEventProcessfd(RepeatedField<google::protobuf::int32> *event
 }
 
 void FimdImpl::sendExitMessageToMessageQueue(shared_ptr<FimdHandle> watcher) {
+    // @TODO: document this
     if (mq_send(watcher->mqfd(), MQ_EXIT_MESSAGE, strlen(MQ_EXIT_MESSAGE), 1) == EOF) {
         // do stuff
     }
