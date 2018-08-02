@@ -5,16 +5,11 @@
 #include <string>
 #include <vector>
 
+namespace fimd {
 class FimdUtil {
 public:
     static int getPidForContainer(std::string id);
 
-private:
-    static std::vector<std::string> fglob(const std::string &pattern);
-    static std::string findCgroupMountpoint(std::string cgroup_type);
-    static std::string getThisCgroup(std::string cgroup_type);
-
-public:
     static inline std::string eraseSubstr(const std::string &s, const std::string &t) {
         std::string str(s.c_str());
         size_t pos = s.find(t);
@@ -23,6 +18,11 @@ public:
         }
         return str;
     }
+
+private:
+    static std::vector<std::string> fglob(const std::string &pattern);
+    static std::string findCgroupMountpoint(std::string cgroup_type);
+    static std::string getThisCgroup(std::string cgroup_type);
 
 private:
     static inline std::vector<std::string> split(const std::string &s, char delim) {
@@ -35,5 +35,6 @@ private:
         return tokens;
     }
 };
+} // namespace fimd
 
 #endif

@@ -1,14 +1,13 @@
 #ifndef _FIMDIMPL_H
 #define _FIMDIMPL_H
 
-#include <future>
 #include <mqueue.h>
-#include <thread>
 #include <vector>
 
 #include "fimd_util.h"
 #include "fim-proto/c++/fim.grpc.pb.h"
 
+namespace fimd {
 class FimdImpl final : public fim::Fimd::Service {
 public:
     explicit FimdImpl() = default;
@@ -34,8 +33,8 @@ private:
         return FimdUtil::eraseSubstr(containerId, "docker://");
     }
 
-private:
-    std::vector<std::shared_ptr<fim::FimdHandle>> m_watchers;
+    std::vector<std::shared_ptr<fim::FimdHandle>> watchers_;
 };
+} // namespace fimd
 
 #endif

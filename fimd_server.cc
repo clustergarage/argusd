@@ -11,10 +11,6 @@
 #include "fimd_impl.h"
 #include "fimd_util.h"
 
-using namespace std;
-using grpc::Server;
-using grpc::ServerBuilder;
-
 #define PORT 50051
 
 int main(int argc, char **argv) {
@@ -23,16 +19,16 @@ int main(int argc, char **argv) {
     FLAGS_stderrthreshold = google::INFO;
     FLAGS_colorlogtostderr = true;
 
-    stringstream ss;
+    std::stringstream ss;
     ss << "0.0.0.0:" << PORT;
-    string server_address(ss.str());
-    FimdImpl service;
+    std::string server_address(ss.str());
+    fimd::FimdImpl service;
 
-    ServerBuilder builder;
+    grpc::ServerBuilder builder;
     builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
     builder.RegisterService(&service);
 
-    unique_ptr<grpc::Server> server(builder.BuildAndStart());
+    std::unique_ptr<grpc::Server> server(builder.BuildAndStart());
     LOG(INFO) << "Server listening on " << server_address;
     server->Wait();
 
