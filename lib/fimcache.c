@@ -32,13 +32,14 @@ void check_cache_consistency() {
             if (lstat(wlcache[i].path_name, &sb) == EOF) {
 #if DEBUG
                 printf("check_cache_consistency: stat: [slot = %d; wd = %d] %s: %s\n",
-                        i, wlcache[i].wd, wlcache[i].path_name, strerror(errno));
+                    i, wlcache[i].wd, wlcache[i].path_name, strerror(errno));
                 fflush(stdout);
                 ++failures;
 #endif
             } else if (!S_ISDIR(sb.st_mode)) {
 #if DEBUG
-                fprintf(stderr, "check_cache_consistency: %s is not a directory\n", wlcache[i].path_name);
+                fprintf(stderr, "check_cache_consistency: %s is not a directory\n",
+                    wlcache[i].path_name);
                 perror("lstat");
 #endif
                 return;
@@ -116,7 +117,7 @@ static int find_empty_cache_slot() {
     // no free slot found; resize cache
     wlcachec += ALLOC_INCR;
 
-    wlcache = realloc(wlcache, wlcachec * sizeof(struct watch));
+    wlcache = realloc(wlcache, wlcachec * sizeof(struct fimwatch));
 #if DEBUG
     if (wlcache == NULL) {
         perror("realloc");
@@ -134,11 +135,11 @@ static int find_empty_cache_slot() {
 /**
  * add an item to the cache
  */
-int add_watch_to_cache(int wd, const char *path_name, uint32_t event_mask) {
+int add_watch_to_cache(int wd, const char *path, uint32_t mask) {
     int slot = find_empty_cache_slot();
     wlcache[slot].wd = wd;
-    strncpy(wlcache[slot].path_name, path_name, PATH_MAX);
-    wlcache[slot].event_mask = event_mask;
+    strncpy(wlcache[slot].path_name, path, PATH_MAX);
+    wlcache[slot].event_mask = mask;
     return slot;
 }
 
@@ -146,11 +147,11 @@ int add_watch_to_cache(int wd, const char *path_name, uint32_t event_mask) {
  * return the cache slot that corresponds to a particular path name
  * or -1 if the path is not in the cache
  */
-int path_name_to_cache_slot(const char *path_name) {
+int path_name_to_cache_slot(const char *path) {
     int i;
     for (i = 0; i < wlcachec; ++i) {
         if (wlcache[i].wd > -1 &&
-                strcmp(wlcache[i].path_name, path_name) == 0) {
+            strcmp(wlcache[i].path_name, path) == 0) {
             return i;
         }
     }
