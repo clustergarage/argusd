@@ -22,6 +22,8 @@ extern int wlcachec;
 // get access to shared variables from fimtree
 extern char **rootpaths;
 extern int rootpathc;
+extern int ifd;
+extern uint32_t imask;
 // set local static variables
 static int readbufsize = 0;
 static int inotifyreadc = 0;
@@ -33,25 +35,25 @@ static int inotifyreadc = 0;
  *
  * if `oldfd` is -1, this is the initial build of the cache, or an
  * explicitly requested cache rebuild, so we are a little less verbose,
- * and we reset `reinit_cnt`
+ * and we reset `reinitc`
  *
  * `mask` can be reinitialized this way
  */
 static int reinitialize(int oldfd, uint32_t mask) {
-    static int reinit_cnt;
+    static int reinitc;
     int fd, cnt, i;
 
     if (oldfd > EOF) {
         close(oldfd);
-        ++reinit_cnt;
+        ++reinitc;
 #if DEBUG
-        printf("Reinitializing cache and inotify FD (reinit_cnt = %d)\n", reinit_cnt);
+        printf("Reinitializing cache and inotify FD (reinitc = %d)\n", reinitc);
 #endif
     } else {
 #if DEBUG
         printf("Initializing cache\n");
 #endif
-        reinit_cnt = 0;
+        reinitc = 0;
     }
 
     fd = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
@@ -166,7 +168,9 @@ static size_t process_next_inotify_event(int *fd, char *ptr, int len, int first,
         // remove the corresponding item from the cache
 #if DEBUG
         printf("Clearing watchlist item %d (%s)\n", event->wd, wlcache[slot].path_name);
+        fflush(stdout);
 #endif
+
         if (find_root_path(wlcache[slot].path_name) != NULL) {
             remove_root_path(wlcache[slot].path_name);
         }
@@ -253,16 +257,16 @@ static size_t process_next_inotify_event(int *fd, char *ptr, int len, int first,
         // compromise that catches the vast majority of intra-tree renames and
         // triggers relatively few cache rebuilds
 
-        const struct inotify_event *next_event = (const struct inotify_event *)(ptr + evtlen);
+        const struct inotify_event *nextevt = (const struct inotify_event *)(ptr + evtlen);
 
-        if (((char *)next_event < ptr + len) &&
-            (next_event->mask & IN_MOVED_TO) &&
-            (next_event->cookie == event->cookie)) {
+        if (((char *)nextevt < ptr + len) &&
+            (nextevt->mask & IN_MOVED_TO) &&
+            (nextevt->cookie == event->cookie)) {
             // we have a `rename` event
             // we need to fix up the cached pathnames for the corresponding
             // directory and all of its subdirectories
-            slot = find_watch_checked(next_event->wd);
-            if (slot > -1) {
+            slot = find_watch_checked(nextevt->wd);
+            if (slot == -1) {
                 // cache reached an inconsistent state
                 *fd = reinitialize(*fd, wlcache[slot].event_mask);
                 // discard all remaining events in current `read` buffer
@@ -270,18 +274,18 @@ static size_t process_next_inotify_event(int *fd, char *ptr, int len, int first,
             }
 
             rewrite_cached_paths(wlcache[slot].path_name, event->name,
-                wlcache[slot].path_name, next_event->name);
+                wlcache[slot].path_name, nextevt->name);
 
             // also processed the next (IN_MOVED_TO) event, so skip over it
-            evtlen += sizeof(struct inotify_event) + next_event->len;
-        } else if (((char *)next_event < ptr + len) || !first) {
+            evtlen += sizeof(struct inotify_event) + nextevt->len;
+        } else if (((char *)nextevt < ptr + len) || !first) {
             // got a "moved from" event without an accompanying "moved to" event
             // the directory has been moved outside the tree we are monitoring
             // need to remove the watches and zap the cache entries for the
             // moved directory and all of its subdirectories
 #if DEBUG
             printf("MOVED_OUT: %p %p\n", wlcache[slot].path_name, event->name);
-            printf("first = %d; remaining bytes = %ld\n", first, ptr + len - (char *)next_event);
+            printf("first = %d; remaining bytes = %ld\n", first, ptr + len - (char *)nextevt);
 #endif
             snprintf(full_path, sizeof(full_path), "%s/%s", wlcache[slot].path_name, event->name);
 
@@ -301,11 +305,11 @@ static size_t process_next_inotify_event(int *fd, char *ptr, int len, int first,
             return -1;
         }
     } else if (event->mask & IN_Q_OVERFLOW) {
-        static int overflow_cnt = 0;
-        ++overflow_cnt;
+        static int overflowc = 0;
+        ++overflowc;
 
 #if DEBUG
-        printf("Queue overflow (%d) (inotifyreadc = %d)\n", overflow_cnt, inotifyreadc);
+        printf("Queue overflow (%d) (inotifyreadc = %d)\n", overflowc, inotifyreadc);
 #endif
 
         // when the queue overflows, some events are lost, at which point we've
@@ -352,26 +356,38 @@ static size_t process_next_inotify_event(int *fd, char *ptr, int len, int first,
             // discard all remaining events in current `read` buffer
             return INOTIFY_READ_BUF_LEN;
         }
-    } else {
-        struct fimwatch_event fwevent = {
-            .event_mask = event->mask,
-            .path_name = wlcache[slot].path_name,         // name of the watched directory
-            .file_name = event->len ? event->name : NULL, // name of the file
-            .is_dir = event->mask & IN_ISDIR
-        };
+    }
+
+    slot = find_watch_checked(event->wd);
+    if (slot == -1 ||
+        // only continue with the events we care about
+        !(event->mask & imask)) {
+        // discard all remaining events in current `read` buffer
+        return INOTIFY_READ_BUF_LEN;
+    }
+
+sendevent: ; // hack to get past label syntax error
+#if DEBUG
+    printf("sendevent: %s [%d]\n", wlcache[slot].path_name, (event->mask & IN_ISDIR));
+#endif
+    struct fimwatch_event fwevent = {
+        .event_mask = event->mask,
+        .path_name = wlcache[slot].path_name,       // name of the watched directory
+        .file_name = event->len ? event->name : "", // name of the file
+        .is_dir = (event->mask & IN_ISDIR)
+    };
 
 #if DEBUG
-        printf("[%d]\t%s/%s\t[%d]\n", fwevent.event_mask, fwevent.path_name,
-            fwevent.file_name, fwevent.is_dir);
-        fflush(stdout);
+    printf("[%d]\t%s/%s\t[%d]\n", fwevent.event_mask, fwevent.path_name,
+        fwevent.file_name, fwevent.is_dir);
+    fflush(stdout);
 #endif
 
-        // @TODO: document this
-        if (mq_send(mq, (const char *)&fwevent, sizeof(fwevent), 0) == EOF) {
+    // @TODO: document this
+    if (mq_send(mq, (const char *)&fwevent, sizeof(fwevent), 0) == EOF) {
 #if DEBUG
-            perror("mq_send");
+        perror("mq_send");
 #endif
-        }
     }
 
     check_cache_consistency();
@@ -431,7 +447,7 @@ static void process_inotify_events(int *fd, mqd_t mq) {
             // IN_MOVED_FROM we should treat it as though this is an
             // out-of-tree `rename`
             // set `first` to 0 for the next `process_next_inotify_event` call
-            int saved_errno;
+            int savederr;
             first = 0;
             len = buf + len - ptr;
 
@@ -451,10 +467,10 @@ static void process_inotify_events(int *fd, mqd_t mq) {
             nr = read(*fd, buf + len, INOTIFY_READ_BUF_LEN - len);
 
             // in case `ualarm` should change errno
-            saved_errno = errno;
+            savederr = errno;
             // cancel alarm
             ualarm(0, 0);
-            errno = saved_errno;
+            errno = savederr;
 
             if (nr == -1 && errno != EINTR) {
 #if DEBUG
@@ -462,7 +478,7 @@ static void process_inotify_events(int *fd, mqd_t mq) {
 #endif
             } else if (nr == 0) {
 #if DEBUG
-                fprintf(stderr, "read() from inotify fd returned 0!");
+                fprintf(stderr, "`read` from inotify fd returned 0!");
 #endif
                 //exit(EXIT_FAILURE);
                 return;
@@ -474,7 +490,6 @@ static void process_inotify_events(int *fd, mqd_t mq) {
             } else {
                 // EINTR
             }
-
             // start again at beginning of buffer
             ptr = buf;
         }
@@ -523,7 +538,7 @@ int start_inotify_watcher(int pathc, char *paths[], uint32_t mask, int processev
     fds[1].events = POLLIN;
 
     // wait for events
-    while (1) {
+    for (;;) {
         poll_num = ppoll(fds, nfds, NULL, &sigmask);
         if (poll_num == EOF) {
             if (errno == EINTR) {
@@ -559,6 +574,9 @@ int start_inotify_watcher(int pathc, char *paths[], uint32_t mask, int processev
 #endif
 
 exit:
+    // free watch cache
+    free_cache();
+
     // close inotify file descriptor
     if (fd != EOF) {
         close(fd);

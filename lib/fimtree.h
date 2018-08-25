@@ -1,13 +1,14 @@
 #ifndef __FIM_TREE__
 #define __FIM_TREE__
 
-char **rootpaths;             // list of path names supplied
-int rootpathc;                // number of path names supplied
+char **rootpaths; // list of path names supplied
+int rootpathc;    // number of path names supplied
+int ifd;          // inotify file descriptor
+uint32_t imask;   // inotify event mask
+
 static int ignrootpathc;      // number of path names that we've ceased to monitor
 static struct stat *rootstat; // `stat` structures for root directories
 static int wlpathc;           // count of directories added to watch list
-static int ifd;               // inotify file descriptor
-static uint32_t imask;        // inotify event mask
 
 void copy_root_paths(int pathc, char *paths[]);
 char **find_root_path(const char *path);

@@ -224,7 +224,7 @@ void FimdImpl::startMessageQueue(mqd_t mq) {
 
             // @TODO: replace /proc/$PID/root for log-readability
             ss << ": " << fwevent->path_name << "/" << fwevent->file_name <<
-                " [" << (fwevent->is_dir & IN_ISDIR ? "directory" : "file") << "]";
+                " [" << (fwevent->is_dir ? "directory" : "file") << "]";
             LOG(INFO) << ss.str();
         }
     } while (!done);

@@ -148,14 +148,16 @@ int traverse_tree(const char *path, const struct stat *sb, int tflag, struct FTW
         return 0;
     }
 
+	// we need to watch certain events at all times for keeping a consistent
+	// view of the filesystem tree
     // @TODO: make this configurable if one wants to watch individual file(s)?
-    imask |= IN_ONLYDIR;
+	flags |= IN_ONLYDIR | IN_CREATE | IN_MOVED_FROM | IN_MOVED_TO | IN_DELETE_SELF;
     if (find_root_path(path) != NULL) {
-        imask |= IN_MOVE_SELF;
+        flags |= IN_MOVE_SELF;
     }
 
     // make directories for events
-    wd = inotify_add_watch(ifd, path, imask);
+    wd = inotify_add_watch(ifd, path, imask | flags);
     if (wd == EOF) {
         // by the time we come to create a watch, the directory might already
         // have been deleted or renamed, in which case we'll get an ENOENT
