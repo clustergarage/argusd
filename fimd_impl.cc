@@ -129,7 +129,7 @@ char **FimdImpl::getPathArrayFromSubject(const int pid, const fim::FimWatcherSub
 }
 
 uint32_t FimdImpl::getEventMaskFromSubject(const fim::FimWatcherSubject subject) {
-    // @TODO: document this - also: IN_EXCL_UNLINK
+    // @TODO: document this
     uint32_t mask = 0; //IN_DONT_FOLLOW;
     std::for_each(subject.event().cbegin(), subject.event().cend(), [&](std::string event) {
         const char *evt = event.c_str();
@@ -157,7 +157,6 @@ void FimdImpl::createInotifyWatcher(const fim::FimWatcherSubject subject, char *
 
     std::packaged_task<int(int, char **, uint32_t, int)> task(start_inotify_watcher);
     std::future<int> result = task.get_future();
-
     std::thread taskThread(std::move(task), subject.path_size(), static_cast<char **>(patharr),
         static_cast<uint32_t>(event_mask), processfd);
     // start as daemon process
