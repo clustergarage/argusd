@@ -178,8 +178,8 @@ int watch_path(const char *path) {
 #endif
         if (errno == ENOENT) {
             return 0;
-        } else {
-          exit(EXIT_FAILURE);
+        //} else {
+        //    exit(EXIT_FAILURE);
         }
     }
 
@@ -202,7 +202,7 @@ int watch_path(const char *path) {
     fflush(stdout);
 #endif
 
-    return wlpathc;
+    return 0;
 }
 
 /**
@@ -230,20 +230,19 @@ int watch_path_recursive(const char *path) {
  * number entries added
  */
 void watch_subtree(int fd, char *path, uint32_t mask, bool recursive) {
-    int cnt;
     wlpathc = 0;
     ifd = fd;
     imask = mask;
     irecursive = recursive;
 
     if (recursive) {
-        cnt = watch_path_recursive(path);
+        watch_path_recursive(path);
     } else {
-        cnt = watch_path(path);
+        watch_path(path);
     }
 
 #if DEBUG
-    printf("    watch_subtree: %s: %d entries added\n", path, cnt);
+    printf("    watch_subtree: %s: %d entries added\n", path, wlpathc);
     fflush(stdout);
 #endif
 }
