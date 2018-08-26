@@ -1,4 +1,5 @@
 #define _GNU_SOURCE
+#include <errno.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -7,6 +8,7 @@
 #include <sys/stat.h>
 
 #include "fimcache.h"
+#include "fimutil.h"
 
 /**
  * deallocate the watch cache
@@ -94,12 +96,13 @@ int find_watch_checked(int wd) {
 void mark_cache_slot_empty(int slot) {
 #if DEBUG
     printf("        mark_cache_slot_empty: slot = %d;  wd = %d; path = %s\n",
-            slot, wlcache[slot].wd, wlcache[slot].path_name);
+        slot, wlcache[slot].wd, wlcache[slot].path_name);
     fflush(stdout);
 #endif
     wlcache[slot].wd = -1;
     wlcache[slot].path_name[0] = '\0';
     wlcache[slot].event_mask = -1;
+    wlcache[slot].recursive = false;
 }
 
 /**
@@ -135,11 +138,12 @@ static int find_empty_cache_slot() {
 /**
  * add an item to the cache
  */
-int add_watch_to_cache(int wd, const char *path, uint32_t mask) {
+int add_watch_to_cache(int wd, const char *path, uint32_t mask, bool recursive) {
     int slot = find_empty_cache_slot();
     wlcache[slot].wd = wd;
     strncpy(wlcache[slot].path_name, path, PATH_MAX);
     wlcache[slot].event_mask = mask;
+    wlcache[slot].recursive = recursive;
     return slot;
 }
 

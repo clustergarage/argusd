@@ -3,12 +3,14 @@
 #include <ftw.h>
 #include <limits.h>
 #include <memory.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/inotify.h>
 
 #include "fimtree.h"
 #include "fimcache.h"
+#include "fimutil.h"
 
 /**
  * duplicate the path names supplied on the command line, perform some sanity
@@ -69,7 +71,7 @@ void copy_root_paths(int pathc, char *paths[]) {
         // note that we can't just do simple string comparisons of the
         // arguments, since different path strings may refer to the same
         // filesystem object (e.g., "foo" and "./foo")
-        // so we use stat() to compare inode numbers and containing device IDs
+        // so we use `stat` to compare i-node numbers and containing device IDs
         if (lstat(paths[i], &rootstat[i]) == EOF) {
 #if DEBUG
             perror("lstat");
@@ -80,8 +82,7 @@ void copy_root_paths(int pathc, char *paths[]) {
             if ((rootstat[j].st_ino == rootstat[j].st_ino) &&
                 (rootstat[j].st_dev == rootstat[j].st_dev)) {
 #if DEBUG
-                printf("Duplicate filesystem objects: %s, %s\n", paths[j], paths[j]);
-                fflush(stdout);
+                fprintf(stderr, "duplicate filesystem objects: %s, %s\n", paths[j], paths[j]);
                 return;
 #endif
             }
@@ -129,7 +130,7 @@ void remove_root_path(const char *path) {
 
     if (ignrootpathc == rootpathc) {
 #if DEBUG
-        printf("No more root paths left to monitor; bye!\n");
+        printf("no more root paths left to monitor; bye!\n");
         fflush(stdout);
 #endif
     }
@@ -142,16 +143,24 @@ void remove_root_path(const char *path) {
  * that the tree traversal should continue
  */
 int traverse_tree(const char *path, const struct stat *sb, int tflag, struct FTW *ftwbuf) {
-    int wd, slot, flags;
     if (!S_ISDIR(sb->st_mode)) {
         // ignore nondirectory files
         return 0;
     }
+    return watch_path(path);
+}
 
-	// we need to watch certain events at all times for keeping a consistent
-	// view of the filesystem tree
+/**
+ * add `path` to the watch list of the inotify file descriptor `ifd`
+ * the process is not recursive
+ * returns number of watches/cache entries added for this subtree
+ */
+int watch_path(const char *path) {
+    int wd, slot, flags;
+    // we need to watch certain events at all times for keeping a consistent
+    // view of the filesystem tree
     // @TODO: make this configurable if one wants to watch individual file(s)?
-	flags |= IN_ONLYDIR | IN_CREATE | IN_MOVED_FROM | IN_MOVED_TO | IN_DELETE_SELF;
+    flags |= IN_ONLYDIR | IN_CREATE | IN_MOVED_FROM | IN_MOVED_TO | IN_DELETE_SELF;
     if (find_root_path(path) != NULL) {
         flags |= IN_MOVE_SELF;
     }
@@ -169,8 +178,8 @@ int traverse_tree(const char *path, const struct stat *sb, int tflag, struct FTW
 #endif
         if (errno == ENOENT) {
             return 0;
-        //} else {
-        //  exit(EXIT_FAILURE);
+        } else {
+          exit(EXIT_FAILURE);
         }
     }
 
@@ -178,6 +187,7 @@ int traverse_tree(const char *path, const struct stat *sb, int tflag, struct FTW
         // this watch descriptor is already in the cache
 #if DEBUG
         printf("wd: %d already in cache (%s)\n", wd, path);
+        fflush(stdout);
 #endif
         return 0;
     }
@@ -185,35 +195,33 @@ int traverse_tree(const char *path, const struct stat *sb, int tflag, struct FTW
     ++wlpathc;
 
     // cache information about the watch
-    slot = add_watch_to_cache(wd, path, imask);
-
+    slot = add_watch_to_cache(wd, path, imask, irecursive);
 #if DEBUG
     // print the name of the current directory
     printf("    watch_path: wd = %d [cache slot: %d]; %s\n", wd, slot, path);
+    fflush(stdout);
 #endif
 
-    return 0;
+    return wlpathc;
 }
 
 /**
- * add `path` to the watch list of the inotify file descriptor `fd`
+ * add `path` to the watch list of the inotify file descriptor `ifd`
  * the process is recursive: watch items are also created for all of the
  * subdirectories of `path`
  * returns number of watches/cache entries added for this subtree
  */
-int watch_path(int fd, const char *path, uint32_t mask) {
-    wlpathc = 0;
-    ifd = fd;
-    imask = mask;
-
+int watch_path_recursive(const char *path) {
     // use FTW_PHYS to avoid following soft links to directories (which could
     // lead us in circles)
     // by the time we come to process `path`, it may already have been deleted,
     // so we log errors from `nftw`, but keep on going
     if (nftw(path, traverse_tree, 20, FTW_PHYS) == EOF) {
+#if DEBUG
         printf("nftw: %s: %s (directory probably deleted before we could watch)\n", path, strerror(errno));
+        fflush(stdout);
+#endif
     }
-
     return wlpathc;
 }
 
@@ -221,8 +229,19 @@ int watch_path(int fd, const char *path, uint32_t mask) {
  * add watches and cache entries for a subtree, logging a message noting the
  * number entries added
  */
-void watch_subtree(int fd, char *path, uint32_t mask) {
-    int cnt = watch_path(fd, path, mask);
+void watch_subtree(int fd, char *path, uint32_t mask, bool recursive) {
+    int cnt;
+    wlpathc = 0;
+    ifd = fd;
+    imask = mask;
+    irecursive = recursive;
+
+    if (recursive) {
+        cnt = watch_path_recursive(path);
+    } else {
+        cnt = watch_path(path);
+    }
+
 #if DEBUG
     printf("    watch_subtree: %s: %d entries added\n", path, cnt);
     fflush(stdout);
@@ -246,6 +265,7 @@ void rewrite_cached_paths(const char *oldpathpf, const char *oldname, const char
 
 #if DEBUG
     printf("rename: %s ==> %s\n", fullpath, newpf);
+    fflush(stdout);
 #endif
 
     for (i = 0; i < wlcachec; ++i) {
@@ -256,6 +276,7 @@ void rewrite_cached_paths(const char *oldpathpf, const char *oldname, const char
             strncpy(wlcache[i].path_name, newpath, PATH_MAX);
 #if DEBUG
             printf("    wd %d [cache slot %d] ==> %s\n", wlcache[i].wd, i, newpath);
+            fflush(stdout);
 #endif
         }
     }
@@ -279,6 +300,7 @@ int remove_subtree(int fd, char *path) {
 
 #if DEBUG
     printf("removing subtree: %s\n", path);
+    fflush(stdout);
 #endif
 
     for (i = 0; i < wlcachec; ++i) {

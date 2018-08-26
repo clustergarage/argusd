@@ -15,6 +15,7 @@
 #include "fimnotify.h"
 #include "fimcache.h"
 #include "fimtree.h"
+#include "fimutil.h"
 
 // get access to shared variables from fimcache
 extern struct fimwatch *wlcache;
@@ -39,19 +40,21 @@ static int inotifyreadc = 0;
  *
  * `mask` can be reinitialized this way
  */
-static int reinitialize(int oldfd, uint32_t mask) {
+static int reinitialize(int oldfd, uint32_t mask, bool recursive) {
     static int reinitc;
     int fd, cnt, i;
 
-    if (oldfd > EOF) {
+    if (oldfd != EOF) {
         close(oldfd);
         ++reinitc;
 #if DEBUG
-        printf("Reinitializing cache and inotify FD (reinitc = %d)\n", reinitc);
+        printf("reinitializing cache and inotify FD (reinitc = %d)\n", reinitc);
+        fflush(stdout);
 #endif
     } else {
 #if DEBUG
-        printf("Initializing cache\n");
+        printf("initializing cache\n");
+        fflush(stdout);
 #endif
         reinitc = 0;
     }
@@ -63,32 +66,31 @@ static int reinitialize(int oldfd, uint32_t mask) {
 #endif
         exit(EXIT_FAILURE);
     }
-
 #if DEBUG
     printf("    new fd = %d\n", fd);
+    fflush(stdout);
 #endif
 
+    // free watch cache
     free_cache();
 
     for (i = 0; i < rootpathc; ++i) {
         if (rootpaths[i] != NULL) {
-            watch_subtree(fd, rootpaths[i], mask);
+            watch_subtree(fd, rootpaths[i], mask, recursive);
         }
     }
-
-    cnt = 0;
-    for (i = 0; i < wlcachec; ++i) {
-        if (wlcache[i].wd >= 0) {
+    for (i = 0, cnt = 0; i < wlcachec; ++i) {
+        if (wlcache[i].wd != EOF) {
             ++cnt;
         }
     }
 
 #if DEBUG
     if (oldfd >= 0) {
-        printf("Rebuilt cache with %d entries\n", cnt);
+        printf("rebuilt cache with %d entries\n", cnt);
+        fflush(stdout);
     }
 #endif
-
     return fd;
 }
 
@@ -110,12 +112,12 @@ static size_t process_next_inotify_event(int *fd, char *ptr, int len, int first,
         // skip IN_IGNORED, since it will come after an event that has already
         // removed the corresponding cache entry
         //
-        // cache consistency check; see the discussion of "intra-tree" `rename`
-        // events
+        // cache consistency check
+        // see the discussion of "intra-tree" `rename` events
         slot = find_watch_checked(event->wd);
         if (slot == -1) {
             // cache reached an inconsistent state
-            *fd = reinitialize(*fd, wlcache[slot].event_mask);
+            *fd = reinitialize(*fd, wlcache[slot].event_mask, wlcache[slot].recursive);
             // discard all remaining events in current `read` buffer
             return INOTIFY_READ_BUF_LEN;
         }
@@ -131,7 +133,8 @@ static size_t process_next_inotify_event(int *fd, char *ptr, int len, int first,
             wlcache[slot].path_name, event->name);
 
 #if DEBUG
-        printf("Directory creation on wd %d: %s\n", event->wd, full_path);
+        printf("directory creation on wd %d: %s\n", event->wd, full_path);
+        fflush(stdout);
 #endif
 
         // we only watch the new subtree if it has not already been cached
@@ -159,15 +162,17 @@ static size_t process_next_inotify_event(int *fd, char *ptr, int len, int first,
         //      the grandchild would leave the cache in a confused state)
         if (!path_name_to_cache_slot(full_path) > -1) {
             slot = find_watch_checked(event->wd);
-            if (slot > -1) {
-                watch_subtree(*fd, full_path, wlcache[slot].event_mask);
+            if (slot > -1 &&
+                // only do this if we're watching recursively
+                wlcache[slot].recursive) {
+                watch_subtree(*fd, full_path, wlcache[slot].event_mask, true);
             }
         }
     } else if (event->mask & IN_DELETE_SELF) {
         // a directory was deleted
         // remove the corresponding item from the cache
 #if DEBUG
-        printf("Clearing watchlist item %d (%s)\n", event->wd, wlcache[slot].path_name);
+        printf("clearing watchlist item %d (%s)\n", event->wd, wlcache[slot].path_name);
         fflush(stdout);
 #endif
 
@@ -223,7 +228,7 @@ static size_t process_next_inotify_event(int *fd, char *ptr, int len, int first,
         // when that assumption is wrong (and we therefore fail to recognize
         // an intra-tree `rename` event), then the rename will be treated as
         // separate "moved from" and "moved to" events, with the result that
-        // some watch items and cache entries are zapped and re-created
+        // some watch items and cache entries are removed and re-created
         // this causes the watch descriptors in our cache to become
         // inconsistent with the watch descriptors in as yet unread events,
         // because the watches are re-created with different watch descriptor
@@ -268,7 +273,7 @@ static size_t process_next_inotify_event(int *fd, char *ptr, int len, int first,
             slot = find_watch_checked(nextevt->wd);
             if (slot == -1) {
                 // cache reached an inconsistent state
-                *fd = reinitialize(*fd, wlcache[slot].event_mask);
+                *fd = reinitialize(*fd, wlcache[slot].event_mask, wlcache[slot].recursive);
                 // discard all remaining events in current `read` buffer
                 return INOTIFY_READ_BUF_LEN;
             }
@@ -281,11 +286,12 @@ static size_t process_next_inotify_event(int *fd, char *ptr, int len, int first,
         } else if (((char *)nextevt < ptr + len) || !first) {
             // got a "moved from" event without an accompanying "moved to" event
             // the directory has been moved outside the tree we are monitoring
-            // need to remove the watches and zap the cache entries for the
+            // need to remove the watches and remove the cache entries for the
             // moved directory and all of its subdirectories
 #if DEBUG
-            printf("MOVED_OUT: %p %p\n", wlcache[slot].path_name, event->name);
+            printf("moved out: %p %p\n", wlcache[slot].path_name, event->name);
             printf("first = %d; remaining bytes = %ld\n", first, ptr + len - (char *)nextevt);
+            fflush(stdout);
 #endif
             snprintf(full_path, sizeof(full_path), "%s/%s", wlcache[slot].path_name, event->name);
 
@@ -293,43 +299,46 @@ static size_t process_next_inotify_event(int *fd, char *ptr, int len, int first,
             if (slot > -1 &&
                 remove_subtree(*fd, full_path) == -1) {
                 // cache reached an inconsistent state
-                *fd = reinitialize(*fd, wlcache[slot].event_mask);
+                *fd = reinitialize(*fd, wlcache[slot].event_mask, wlcache[slot].recursive);
                 // discard all remaining events in current `read` buffer
                 return INOTIFY_READ_BUF_LEN;
             }
         } else {
 #if DEBUG
-            printf("HANGING IN_MOVED_FROM\n");
+            printf("hanging IN_MOVED_FROM\n");
+            fflush(stdout);
 #endif
             // tell caller to do another `read`
             return -1;
         }
     } else if (event->mask & IN_Q_OVERFLOW) {
         static int overflowc = 0;
-        ++overflowc;
 
+        ++overflowc;
 #if DEBUG
-        printf("Queue overflow (%d) (inotifyreadc = %d)\n", overflowc, inotifyreadc);
+        printf("queue overflow (%d) (inotifyreadc = %d)\n", overflowc, inotifyreadc);
+        fflush(stdout);
 #endif
 
         // when the queue overflows, some events are lost, at which point we've
         // lost any chance of keeping our cache consistent with the state of
         // the filesystem
         // so, discard this inotify file descriptor and create a new one, and
-        // zap and rebuild the cache
+        // remove and rebuild the cache
         slot = find_watch_checked(event->wd);
         if (slot > -1) {
-            *fd = reinitialize(*fd, wlcache[slot].event_mask);
+            *fd = reinitialize(*fd, wlcache[slot].event_mask, wlcache[slot].recursive);
         }
         // discard all remaining events in current `read` buffer
         evtlen = INOTIFY_READ_BUF_LEN;
     } else if (event->mask & IN_UNMOUNT) {
         // when a filesystem is unmounted, each of the watches on the is
         // dropped, and an unmount and an ignore event are generated
-        // there's nothing left for us to monitor, so we just zap the
+        // there's nothing left for us to monitor, so we just remove the
         // corresponding cache entry
 #if DEBUG
-        printf("Filesystem unmounted: %s\n", wlcache[slot].path_name);
+        printf("filesystem unmounted: %s\n", wlcache[slot].path_name);
+        fflush(stdout);
 #endif
         mark_cache_slot_empty(slot);
         // no need to remove the watch; that happens automatically
@@ -343,7 +352,8 @@ static size_t process_next_inotify_event(int *fd, char *ptr, int len, int first,
         // corresponds to that i-node
         // instead, we'll keep things simple, and just cease monitoring it
 #if DEBUG
-        printf("Root path moved: %s\n", wlcache[slot].path_name);
+        printf("root path moved: %s\n", wlcache[slot].path_name);
+        fflush(stdout);
 #endif
         remove_root_path(wlcache[slot].path_name);
 
@@ -351,7 +361,7 @@ static size_t process_next_inotify_event(int *fd, char *ptr, int len, int first,
             // cache reached an inconsistent state
             slot = find_watch_checked(event->wd);
             if (slot > -1) {
-                *fd = reinitialize(*fd, wlcache[slot].event_mask);
+                *fd = reinitialize(*fd, wlcache[slot].event_mask, wlcache[slot].recursive);
             }
             // discard all remaining events in current `read` buffer
             return INOTIFY_READ_BUF_LEN;
@@ -369,6 +379,7 @@ static size_t process_next_inotify_event(int *fd, char *ptr, int len, int first,
 sendevent: ; // hack to get past label syntax error
 #if DEBUG
     printf("sendevent: %s [%d]\n", wlcache[slot].path_name, (event->mask & IN_ISDIR));
+    fflush(stdout);
 #endif
     struct fimwatch_event fwevent = {
         .event_mask = event->mask,
@@ -418,7 +429,7 @@ static void process_inotify_events(int *fd, mqd_t mq) {
         return;
     } else if (len == 0) {
 #if DEBUG
-        fprintf(stderr, "read() from inotify fd returned 0!");
+        fprintf(stderr, "`read` from inotify fd returned 0!");
 #endif
         //exit(EXIT_FAILURE);
         return;
@@ -496,8 +507,8 @@ static void process_inotify_events(int *fd, mqd_t mq) {
     }
 }
 
-int start_inotify_watcher(int pathc, char *paths[], uint32_t mask, int processevtfd) {
-    int fd, poll_num;
+int start_inotify_watcher(int pathc, char *paths[], uint32_t mask, bool recursive, int processevtfd) {
+    int fd, pollc;
     mqd_t mq; // @TODO: share same mq instance (static)
     nfds_t nfds;
     struct pollfd fds[2];
@@ -514,7 +525,7 @@ int start_inotify_watcher(int pathc, char *paths[], uint32_t mask, int processev
 #endif
 
     // create an inotify instance and populate it with entries for paths
-    fd = reinitialize(-1, mask);
+    fd = reinitialize(-1, mask, recursive);
     if (fd == EOF) {
         goto exit;
     }
@@ -539,8 +550,8 @@ int start_inotify_watcher(int pathc, char *paths[], uint32_t mask, int processev
 
     // wait for events
     for (;;) {
-        poll_num = ppoll(fds, nfds, NULL, &sigmask);
-        if (poll_num == EOF) {
+        pollc = ppoll(fds, nfds, NULL, &sigmask);
+        if (pollc == EOF) {
             if (errno == EINTR) {
                 continue;
             }
@@ -550,7 +561,7 @@ int start_inotify_watcher(int pathc, char *paths[], uint32_t mask, int processev
             goto exit;
         }
 
-        if (poll_num > 0) {
+        if (pollc > 0) {
             if (fds[0].revents & POLLIN) {
                 // inotify events are available
                 process_inotify_events(&fd, mq);

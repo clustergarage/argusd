@@ -155,10 +155,10 @@ void FimdImpl::createInotifyWatcher(const fim::FimWatcherSubject subject, char *
     }
     eventProcessfds->Add(processfd);
 
-    std::packaged_task<int(int, char **, uint32_t, int)> task(start_inotify_watcher);
+    std::packaged_task<int(int, char **, uint32_t, bool, int)> task(start_inotify_watcher);
     std::future<int> result = task.get_future();
     std::thread taskThread(std::move(task), subject.path_size(), static_cast<char **>(patharr),
-        static_cast<uint32_t>(event_mask), processfd);
+        static_cast<uint32_t>(event_mask), subject.recursive(), processfd);
     // start as daemon process
     taskThread.detach();
 
