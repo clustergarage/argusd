@@ -34,15 +34,13 @@ grpc::Status FimdImpl::CreateWatch(grpc::ServerContext *context, const fim::Fimd
     } else {
         LOG(INFO) << "Updating inotify watcher...";
 
-        // stop existing message queue
-        sendExitMessageToMessageQueue(watcher);
         // stop existing watcher polling
         sendKillSignalToWatcher(watcher);
         watcher->clear_processeventfd();
     }
 
     response->set_hostuid(request->hostuid().c_str());
-    response->set_mqfd(static_cast<google::protobuf::int32>(createMessageQueue()));
+    response->set_mqfd(static_cast<google::protobuf::int32>(createMessageQueue(watcher != nullptr)));
 
     for_each(pids.cbegin(), pids.cend(), [&](const int pid) {
         for_each(request->subject().cbegin(), request->subject().cend(), [&](const fim::FimWatcherSubject subject) {
@@ -155,10 +153,10 @@ void FimdImpl::createInotifyWatcher(const fim::FimWatcherSubject subject, char *
     }
     eventProcessfds->Add(processfd);
 
-    std::packaged_task<int(int, char **, uint32_t, bool, int)> task(start_inotify_watcher);
+    std::packaged_task<int(int, char **, uint32_t, bool, int, mqd_t)> task(start_inotify_watcher);
     std::future<int> result = task.get_future();
     std::thread taskThread(std::move(task), subject.path_size(), static_cast<char **>(patharr),
-        static_cast<uint32_t>(event_mask), subject.recursive(), processfd);
+        static_cast<uint32_t>(event_mask), subject.recursive(), processfd, mq_);
     // start as daemon process
     taskThread.detach();
 
@@ -170,8 +168,7 @@ void FimdImpl::createInotifyWatcher(const fim::FimWatcherSubject subject, char *
     }
 }
 
-mqd_t FimdImpl::createMessageQueue() {
-    mqd_t mq;
+mqd_t FimdImpl::createMessageQueue(bool recreate) {
     mq_attr attr;
     // initialize the queue attributes
     attr.mq_flags = 0;
@@ -179,21 +176,27 @@ mqd_t FimdImpl::createMessageQueue() {
     attr.mq_msgsize = MQ_MAX_SIZE;
     attr.mq_curmsgs = 0;
 
+    if (recreate) {
+        mq_close(mq_);
+        mq_unlink(MQ_QUEUE_NAME);
+    }
+
     // create the message queue
-    mq = mq_open(MQ_QUEUE_NAME, O_CREAT | O_RDWR, 0644, &attr);
-    if (mq == EOF) {
+    mq_ = mq_open(MQ_QUEUE_NAME, O_CREAT | O_CLOEXEC | O_RDWR, S_IRUSR | S_IWUSR, &attr);
+    if (mq_ == EOF) {
 #if DEBUG
         perror("mq_open");
 #endif
+        return EOF;
     }
 
     // start message queue
     std::packaged_task<void(mqd_t)> queue(startMessageQueue);
-    std::thread queueThread(move(queue), mq);
+    std::thread queueThread(move(queue), mq_);
     // start as daemon process
     queueThread.detach();
 
-    return mq;
+    return mq_;
 }
 
 void FimdImpl::startMessageQueue(mqd_t mq) {
@@ -202,6 +205,9 @@ void FimdImpl::startMessageQueue(mqd_t mq) {
         char buffer[MQ_MAX_SIZE + 1];
         ssize_t bytes_read = mq_receive(mq, buffer, MQ_MAX_SIZE, NULL);
         buffer[bytes_read] = '\0';
+        if (bytes_read == EOF) {
+            continue;
+        }
 
         if (!strncmp(buffer, MQ_EXIT_MESSAGE, strlen(MQ_EXIT_MESSAGE))) {
             done = true;

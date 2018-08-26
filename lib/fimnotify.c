@@ -28,6 +28,7 @@ extern uint32_t imask;
 // set local static variables
 static int readbufsize = 0;
 static int inotifyreadc = 0;
+static mqd_t imq;
 
 /**
  * when the cache is in an unrecoverable state, we discard the current
@@ -100,9 +101,9 @@ static int reinitialize(int oldfd, uint32_t mask, bool recursive) {
  * IN_MOVED_TO pair that share a cookie value, both events are consumed returns
  * the number of bytes in the event(s) consumed from `ptr`
  */
-static size_t process_next_inotify_event(int *fd, char *ptr, int len, int first, mqd_t mq) {
+static size_t process_next_inotify_event(int *fd, char *ptr, int len, int first) {
     const struct inotify_event *event = (const struct inotify_event *)ptr;
-    char full_path[PATH_MAX + NAME_MAX];
+    char fullpath[PATH_MAX + NAME_MAX];
     size_t evtlen;
     int slot;
 
@@ -129,11 +130,11 @@ static size_t process_next_inotify_event(int *fd, char *ptr, int len, int first,
         (event->mask & (IN_CREATE | IN_MOVED_TO))) {
         // a new subdirectory was created, or a subdirectory was renamed into
         // the tree; create watches for it, and all of its subdirectories
-        snprintf(full_path, sizeof(full_path), "%s/%s",
+        snprintf(fullpath, sizeof(fullpath), "%s/%s",
             wlcache[slot].path_name, event->name);
 
 #if DEBUG
-        printf("directory creation on wd %d: %s\n", event->wd, full_path);
+        printf("directory creation on wd %d: %s\n", event->wd, fullpath);
         fflush(stdout);
 #endif
 
@@ -160,12 +161,12 @@ static size_t process_next_inotify_event(int *fd, char *ptr, int len, int first,
         //      the "grandchild" because they already exist (creating the watch
         //      for the second time is harmless, but adding a second cache for
         //      the grandchild would leave the cache in a confused state)
-        if (!path_name_to_cache_slot(full_path) > -1) {
+        if (!path_name_to_cache_slot(fullpath) > -1) {
             slot = find_watch_checked(event->wd);
             if (slot > -1 &&
                 // only do this if we're watching recursively
                 wlcache[slot].recursive) {
-                watch_subtree(*fd, full_path, wlcache[slot].event_mask, true);
+                watch_subtree(*fd, fullpath, wlcache[slot].event_mask, true);
             }
         }
     } else if (event->mask & IN_DELETE_SELF) {
@@ -293,11 +294,11 @@ static size_t process_next_inotify_event(int *fd, char *ptr, int len, int first,
             printf("first = %d; remaining bytes = %ld\n", first, ptr + len - (char *)nextevt);
             fflush(stdout);
 #endif
-            snprintf(full_path, sizeof(full_path), "%s/%s", wlcache[slot].path_name, event->name);
+            snprintf(fullpath, sizeof(fullpath), "%s/%s", wlcache[slot].path_name, event->name);
 
             slot = find_watch_checked(event->wd);
             if (slot > -1 &&
-                remove_subtree(*fd, full_path) == -1) {
+                remove_subtree(*fd, fullpath) == -1) {
                 // cache reached an inconsistent state
                 *fd = reinitialize(*fd, wlcache[slot].event_mask, wlcache[slot].recursive);
                 // discard all remaining events in current `read` buffer
@@ -395,7 +396,7 @@ sendevent: ; // hack to get past label syntax error
 #endif
 
     // @TODO: document this
-    if (mq_send(mq, (const char *)&fwevent, sizeof(fwevent), 0) == EOF) {
+    if (mq_send(imq, (const char *)&fwevent, sizeof(fwevent), 0) == EOF) {
 #if DEBUG
         perror("mq_send");
 #endif
@@ -408,9 +409,8 @@ sendevent: ; // hack to get past label syntax error
 
 /**
  * read all available inotify events from the file descriptor `fd`
- * `mq` is the message queue to pass events into
  */
-static void process_inotify_events(int *fd, mqd_t mq) {
+static void process_inotify_events(int *fd) {
     // some systems cannot read integer variables if they are not properly
     // aligned on other systems, incorrect alignment may decrease performance
     // hence, the buffer used for reading from the inotify file descriptor
@@ -440,7 +440,7 @@ static void process_inotify_events(int *fd, mqd_t mq) {
     // process each event in the buffer returned by `read`
     // loop over all events in the buffer
     for (ptr = buf; ptr < buf + len; /*ptr += sizeof(struct inotify_event) + event->len*/) {
-        evtlen = process_next_inotify_event(fd, ptr, buf + len - ptr, first, mq);
+        evtlen = process_next_inotify_event(fd, ptr, buf + len - ptr, first);
 
         if (evtlen > 0) {
             ptr += evtlen;
@@ -507,9 +507,8 @@ static void process_inotify_events(int *fd, mqd_t mq) {
     }
 }
 
-int start_inotify_watcher(int pathc, char *paths[], uint32_t mask, bool recursive, int processevtfd) {
+int start_inotify_watcher(int pathc, char *paths[], uint32_t mask, bool recursive, int processevtfd, mqd_t mq) {
     int fd, pollc;
-    mqd_t mq; // @TODO: share same mq instance (static)
     nfds_t nfds;
     struct pollfd fds[2];
     sigset_t sigmask;
@@ -529,15 +528,11 @@ int start_inotify_watcher(int pathc, char *paths[], uint32_t mask, bool recursiv
     if (fd == EOF) {
         goto exit;
     }
-
-    // open mqueue
-    mq = mq_open(MQ_QUEUE_NAME, O_WRONLY);
+    // store mq file descriptor
     if (mq == EOF) {
-#if DEBUG
-        perror("mq_open");
-#endif
         goto exit;
     }
+    imq = mq;
 
     // prepare for polling
     nfds = 2;
@@ -564,7 +559,7 @@ int start_inotify_watcher(int pathc, char *paths[], uint32_t mask, bool recursiv
         if (pollc > 0) {
             if (fds[0].revents & POLLIN) {
                 // inotify events are available
-                process_inotify_events(&fd, mq);
+                process_inotify_events(&fd);
             }
 
             if (fds[1].revents & POLLIN) {
@@ -587,15 +582,10 @@ int start_inotify_watcher(int pathc, char *paths[], uint32_t mask, bool recursiv
 exit:
     // free watch cache
     free_cache();
-
     // close inotify file descriptor
     if (fd != EOF) {
         close(fd);
     }
-    // close message queue
-    if (mq != EOF) {
-        mq_close(mq);
-    }
 
-    exit(errno ? EXIT_FAILURE : EXIT_SUCCESS);
+    return errno ? EXIT_FAILURE : EXIT_SUCCESS;
 }

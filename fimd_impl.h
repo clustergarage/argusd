@@ -23,7 +23,7 @@ private:
     uint32_t getEventMaskFromSubject(const fim::FimWatcherSubject subject);
     void createInotifyWatcher(const fim::FimWatcherSubject subject, char **patharr, uint32_t event_mask,
         google::protobuf::RepeatedField<google::protobuf::int32> *procFds);
-    mqd_t createMessageQueue();
+    mqd_t createMessageQueue(bool recreate);
     static void startMessageQueue(mqd_t mq);
     void sendKillSignalToWatcher(std::shared_ptr<fim::FimdHandle> watcher);
     void eraseEventProcessfd(google::protobuf::RepeatedField<google::protobuf::int32> *eventProcessfds, const int processfd);
@@ -34,6 +34,7 @@ private:
     }
 
     std::vector<std::shared_ptr<fim::FimdHandle>> watchers_;
+    mqd_t mq_;
 };
 } // namespace fimd
 

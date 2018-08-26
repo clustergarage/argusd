@@ -15,8 +15,8 @@ struct fimwatch_event {
 };
 
 static int reinitialize(int oldfd, uint32_t mask, bool recursive);
-static size_t process_next_inotify_event(int *fd, char *buf, int len, int first, mqd_t mq);
-static void process_inotify_events(int *fd, int processevtfd);
-int start_inotify_watcher(int pathc, char *paths[], uint32_t mask, bool recursive, mqd_t mq);
+static size_t process_next_inotify_event(int *fd, char *buf, int len, int first);
+static void process_inotify_events(int *fd);
+int start_inotify_watcher(int pathc, char *paths[], uint32_t mask, bool recursive, int processevtfd, mqd_t mq);
 
 #endif
