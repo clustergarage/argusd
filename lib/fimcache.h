@@ -3,24 +3,20 @@
 
 #include <stdbool.h>
 
-struct fimwatch {
-    int wd;                   // watch descriptor (-1 if slot unused)
-    char path_name[PATH_MAX]; // cached path name
-    uint32_t event_mask;
-    bool recursive;
-};
+#include "fimutil.h"
 
-struct fimwatch *wlcache; // array of cached items
-int wlcachec;             // current size of the array
+// @TODO: !!!!!!!!!!!!!!!!!!!1
+// change all pid lookups to a pid->pid slot [lay out memory contiguously]
 
-void free_cache();
-void check_cache_consistency();
-int find_watch(int wd);
-int find_watch_checked(int wd);
-void mark_cache_slot_empty(int slot);
-static int find_empty_cache_slot();
-int add_watch_to_cache(int wd, const char *path, uint32_t mask, bool recursive);
-int path_name_to_cache_slot(const char *path);
-static int path_name_in_cache(const char *path);
+void free_cache(const int pid);
+void check_cache_consistency(const int pid);
+int find_watch(const int pid, const int wd);
+int find_watch_checked(const int pid, const int wd);
+void mark_cache_slot_empty(const int pid, const int slot);
+static int find_empty_cache_slot(const int pid);
+int add_watch_to_cache(const int pid, const struct fimwatch *watch);
+int path_name_to_cache_slot(const int pid, const char *path);
+char *wd_to_path_name(const int pid, const int wd);
+int wd_to_cache_slot(const int pid, const int wd);
 
 #endif

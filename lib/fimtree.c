@@ -16,12 +16,12 @@
  * duplicate the path names supplied on the command line, perform some sanity
  * checking along the way
  */
-void copy_root_paths(int pathc, char *paths[]) {
+void copy_root_paths(const int pid, int pathc, char *paths[]) {
     int i, j;
     struct stat sb;
 
     // count the number of root paths and check that the paths are valid
-    for (i = 0, rootpathc = 0; i < pathc; ++i, ++rootpathc) {
+    for (i = 0, rootpathc[pid] = 0; i < pathc; ++i, ++rootpathc[pid]) {
         // check that command-line arguments are directories
         if (lstat(paths[i], &sb) == EOF) {
 #if DEBUG
@@ -40,25 +40,25 @@ void copy_root_paths(int pathc, char *paths[]) {
     }
 
     // create a copy of the root directory path names
-    rootpaths = calloc(rootpathc, sizeof(char *));
-    if (rootpaths == NULL) {
+    rootpaths[pid] = calloc(rootpathc[pid], sizeof(char *));
+    if (rootpaths[pid] == NULL) {
 #if DEBUG
         perror("calloc");
 #endif
         return;
     }
 
-    rootstat = calloc(rootpathc, sizeof(struct stat));
-    if (rootstat == NULL) {
+    rootstat[pid] = calloc(rootpathc[pid], sizeof(struct stat));
+    if (rootstat[pid] == NULL) {
 #if DEBUG
         perror("calloc");
 #endif
         return;
     }
 
-    for (i = 0; i < rootpathc; ++i) {
-        rootpaths[i] = strdup(paths[i]);
-        if (rootpaths[i] == NULL) {
+    for (i = 0; i < rootpathc[pid]; ++i) {
+        rootpaths[pid][i] = strdup(paths[i]);
+        if (rootpaths[pid][i] == NULL) {
 #if DEBUG
             perror("strdup");
 #endif
@@ -72,15 +72,15 @@ void copy_root_paths(int pathc, char *paths[]) {
         // arguments, since different path strings may refer to the same
         // filesystem object (e.g., "foo" and "./foo")
         // so we use `stat` to compare i-node numbers and containing device IDs
-        if (lstat(paths[i], &rootstat[i]) == EOF) {
+        if (lstat(paths[i], &rootstat[pid][i]) == EOF) {
 #if DEBUG
             perror("lstat");
 #endif
         }
 
         for (j = 0; j < i; ++j) {
-            if ((rootstat[j].st_ino == rootstat[j].st_ino) &&
-                (rootstat[j].st_dev == rootstat[j].st_dev)) {
+            if ((rootstat[pid][j].st_ino == rootstat[pid][j].st_ino) &&
+                (rootstat[pid][j].st_dev == rootstat[pid][j].st_dev)) {
 #if DEBUG
                 fprintf(stderr, "duplicate filesystem objects: %s, %s\n", paths[j], paths[j]);
                 return;
@@ -89,19 +89,19 @@ void copy_root_paths(int pathc, char *paths[]) {
         }
     }
 
-    ignrootpathc = 0;
+    ignrootpathc[pid] = 0;
 }
 
 /**
  * return the address of the element in `rootpaths` that points to a string
  * matching `path`, or NULL if there is no match
  */
-char **find_root_path(const char *path) {
+char **find_root_path(const int pid, const char *path) {
     int i;
-    for (i = 0; i < rootpathc; ++i) {
-        if (rootpaths[i] != NULL &&
-            strcmp(path, rootpaths[i]) == 0) {
-            return &rootpaths[i];
+    for (i = 0; i < rootpathc[pid]; ++i) {
+        if (rootpaths[pid][i] != NULL &&
+            strcmp(path, rootpaths[pid][i]) == 0) {
+            return &rootpaths[pid][i];
         }
     }
     return NULL;
@@ -111,8 +111,8 @@ char **find_root_path(const char *path) {
  * ceased to monitor a root path name (probably because it was renamed)
  * so remove this path from the root path list
  */
-void remove_root_path(const char *path) {
-    char **p = find_root_path(path);
+void remove_root_path(const int pid, const char *path) {
+    char **p = find_root_path(pid, path);
 #if DEBUG
     printf("remove_root_path: %s\n", path);
     fflush(stdout);
@@ -126,9 +126,9 @@ void remove_root_path(const char *path) {
     }
     *p = NULL;
 
-    ++ignrootpathc;
+    ++ignrootpathc[pid];
 
-    if (ignrootpathc == rootpathc) {
+    if (ignrootpathc[pid] == rootpathc[pid]) {
 #if DEBUG
         printf("no more root paths left to monitor; bye!\n");
         fflush(stdout);
@@ -156,18 +156,18 @@ int traverse_tree(const char *path, const struct stat *sb, int tflag, struct FTW
  * returns number of watches/cache entries added for this subtree
  */
 int watch_path(const char *path) {
-    int wd, slot, flags;
+    int slot, flags;
     // we need to watch certain events at all times for keeping a consistent
     // view of the filesystem tree
     // @TODO: make this configurable if one wants to watch individual file(s)?
     flags |= IN_ONLYDIR | IN_CREATE | IN_MOVED_FROM | IN_MOVED_TO | IN_DELETE_SELF;
-    if (find_root_path(path) != NULL) {
+    if (find_root_path(ipid, path) != NULL) {
         flags |= IN_MOVE_SELF;
     }
 
     // make directories for events
-    wd = inotify_add_watch(ifd, path, imask | flags);
-    if (wd == EOF) {
+    iwd = inotify_add_watch(ifd, path, imask | flags);
+    if (iwd == EOF) {
         // by the time we come to create a watch, the directory might already
         // have been deleted or renamed, in which case we'll get an ENOENT
         // error; log the error, but carry on execution
@@ -178,29 +178,21 @@ int watch_path(const char *path) {
 #endif
         if (errno == ENOENT) {
             return 0;
-        //} else {
-        //    exit(EXIT_FAILURE);
+        } else {
+            exit(EXIT_FAILURE);
         }
     }
 
-    if (find_watch(wd) > -1) {
+    if (find_watch(ipid, iwd) > -1) {
         // this watch descriptor is already in the cache
 #if DEBUG
-        printf("wd: %d already in cache (%s)\n", wd, path);
+        printf("wd: %d already in cache (%s)\n", iwd, path);
         fflush(stdout);
 #endif
         return 0;
     }
 
-    ++wlpathc;
-
-    // cache information about the watch
-    slot = add_watch_to_cache(wd, path, imask, irecursive);
-#if DEBUG
-    // print the name of the current directory
-    printf("    watch_path: wd = %d [cache slot: %d]; %s\n", wd, slot, path);
-    fflush(stdout);
-#endif
+    ++wlpathc[ipid];
 
     return 0;
 }
@@ -222,15 +214,16 @@ int watch_path_recursive(const char *path) {
         fflush(stdout);
 #endif
     }
-    return wlpathc;
+    return wlpathc[ipid];
 }
 
 /**
  * add watches and cache entries for a subtree, logging a message noting the
  * number entries added
  */
-void watch_subtree(int fd, char *path, uint32_t mask, bool recursive) {
-    wlpathc = 0;
+int watch_subtree(const int pid, int fd, char *path, uint32_t mask, bool recursive) {
+    wlpathc[pid] = 0;
+    ipid = pid;
     ifd = fd;
     imask = mask;
     irecursive = recursive;
@@ -242,9 +235,10 @@ void watch_subtree(int fd, char *path, uint32_t mask, bool recursive) {
     }
 
 #if DEBUG
-    printf("    watch_subtree: %s: %d entries added\n", path, wlpathc);
+    printf("    watch_subtree: %s: %d entries added\n", path, wlpathc[pid]);
     fflush(stdout);
 #endif
+    return iwd;
 }
 
 /**
@@ -253,10 +247,10 @@ void watch_subtree(int fd, char *path, uint32_t mask, bool recursive) {
  * `oldpathpf`/`oldname` and all of its subdirectories to reflect
  * the change
  */
-void rewrite_cached_paths(const char *oldpathpf, const char *oldname, const char *newpathpf, const char *newname) {
+void rewrite_cached_paths(const int pid, const char *oldpathpf, const char *oldname, const char *newpathpf, const char *newname) {
     char fullpath[PATH_MAX], newpf[PATH_MAX], newpath[PATH_MAX];
     size_t len;
-    int i;
+    int i, j;
 
     snprintf(fullpath, sizeof(fullpath), "%s/%s", oldpathpf, oldname);
     snprintf(newpf, sizeof(newpf), "%s/%s", newpathpf, newname);
@@ -267,16 +261,18 @@ void rewrite_cached_paths(const char *oldpathpf, const char *oldname, const char
     fflush(stdout);
 #endif
 
-    for (i = 0; i < wlcachec; ++i) {
-        if (strncmp(fullpath, wlcache[i].path_name, len) == 0 &&
-            (wlcache[i].path_name[len] == '/' ||
-            wlcache[i].path_name[len] == '\0')) {
-            snprintf(newpath, sizeof(newpath), "%s%s", newpf, &wlcache[i].path_name[len]);
-            strncpy(wlcache[i].path_name, newpath, PATH_MAX);
+    for (i = 0; i < wlcachec[pid]; ++i) {
+        for (j = 0; j < wlcache[pid][i].pathc; ++j) {
+            if (strncmp(fullpath, wlcache[pid][i].paths[j], len) == 0 &&
+                (wlcache[pid][i].paths[j][len] == '/' ||
+                wlcache[pid][i].paths[j][len] == '\0')) {
+                snprintf(newpath, sizeof(newpath), "%s%s", newpf, &wlcache[pid][i].paths[j][len]);
+                strncpy(wlcache[pid][i].paths[j], newpath, PATH_MAX);
 #if DEBUG
-            printf("    wd %d [cache slot %d] ==> %s\n", wlcache[i].wd, i, newpath);
-            fflush(stdout);
+                printf("    wd %d [cache slot %d] ==> %s\n", wlcache[pid][i].wd[j], i, newpath);
+                fflush(stdout);
 #endif
+            }
         }
     }
 }
@@ -287,9 +283,9 @@ void rewrite_cached_paths(const char *oldpathpf, const char *oldname, const char
  * returns number of entries that we (tried to) remove, or -1 if an
  * `inotify_rm_watch` call failed
  */
-int remove_subtree(int fd, char *path) {
+int remove_subtree(const int pid, int fd, char *path) {
     size_t len = strlen(path);
-    int i;
+    int i, j;
     int cnt = 0;
     // the argument we receive might be a pointer to a path string that is
     // actually stored in the cache
@@ -302,34 +298,36 @@ int remove_subtree(int fd, char *path) {
     fflush(stdout);
 #endif
 
-    for (i = 0; i < wlcachec; ++i) {
-        if (wlcache[i].wd > -1) {
-            if (strncmp(pn, wlcache[i].path_name, len) == 0 &&
-                (wlcache[i].path_name[len] == '/' ||
-                wlcache[i].path_name[len] == '\0')) {
+    for (i = 0; i < wlcachec[pid]; ++i) {
+        if (wlcache[pid][i].pathc > -1) {
+            for (j = 0; j < wlcache[pid][i].pathc; ++j) {
+                if (strncmp(pn, wlcache[pid][i].paths[j], len) == 0 &&
+                    (wlcache[pid][i].paths[j][len] == '/' ||
+                    wlcache[pid][i].paths[j][len] == '\0')) {
 #if DEBUG
-                printf("    removing watch: wd = %d (%s)\n",
-                    wlcache[i].wd, wlcache[i].path_name);
-                fflush(stdout);
-#endif
-
-                if (inotify_rm_watch(fd, wlcache[i].wd) == EOF) {
-#if DEBUG
-                    printf("inotify_rm_watch wd = %d (%s): %s\n",
-                        wlcache[i].wd, wlcache[i].path_name, strerror(errno));
+                    printf("    removing watch: wd = %d (%s)\n",
+                        wlcache[pid][i].wd[j], wlcache[pid][i].paths[j]);
                     fflush(stdout);
 #endif
 
-                    // when we have multiple renamers, sometimes
-                    // `inotify_rm_watch` fails
-                    // in this case, we force a cache rebuild by returning -1
-                    // @TODO: is there a better solution?
-                    cnt = -1;
-                    break;
-                }
+                    if (inotify_rm_watch(fd, wlcache[pid][i].wd[j]) == EOF) {
+#if DEBUG
+                        printf("inotify_rm_watch wd = %d (%s): %s\n", wlcache[pid][i].wd[j],
+                            wlcache[pid][i].paths[j], strerror(errno));
+                        fflush(stdout);
+#endif
 
-                mark_cache_slot_empty(i);
-                ++cnt;
+                        // when we have multiple renamers, sometimes
+                        // `inotify_rm_watch` fails
+                        // in this case, we force a cache rebuild by returning -1
+                        // @TODO: is there a better solution?
+                        cnt = -1;
+                        break;
+                    }
+
+                    mark_cache_slot_empty(pid, i);
+                    ++cnt;
+                }
             }
         }
     }

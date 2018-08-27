@@ -1,24 +1,28 @@
 #ifndef __FIM_TREE__
 #define __FIM_TREE__
 
-char **rootpaths; // list of path names supplied
-int rootpathc;    // number of path names supplied
-int ifd;          // inotify file descriptor
-uint32_t imask;   // inotify event mask
-bool irecursive;  // inotify event mask
+#include "fimutil.h"
 
-static int ignrootpathc;      // number of path names that we've ceased to monitor
-static struct stat *rootstat; // `stat` structures for root directories
-static int wlpathc;           // count of directories added to watch list
+char **rootpaths[WATCH_MAX]; // list of path names supplied
+int rootpathc[WATCH_MAX];    // number of path names supplied
+int ipid;                    // pid of container
+int ifd, iwd;                // inotify file, watch descriptors
+uint32_t imask;              // inotify event mask
+bool irecursive;             // inotify event mask
 
-void copy_root_paths(int pathc, char *paths[]);
-char **find_root_path(const char *path);
-void remove_root_path(const char *path);
+static int ignrootpathc[WATCH_MAX];      // number of path names that we've ceased to monitor
+static struct stat *rootstat[WATCH_MAX]; // `stat` structures for root directories
+static int wlpathc[WATCH_MAX];           // count of directories added to watch list
+
+void copy_root_paths(const int pid, int pathc, char *paths[]);
+char **find_root_path(const int pid, const char *path);
+void remove_root_path(const int pid, const char *path);
 int traverse_tree(const char *path, const struct stat *sb, int tflag, struct FTW *ftwbuf);
 int watch_path(const char *path);
 int watch_path_recursive(const char *path);
-void watch_subtree(int fd, char *path, uint32_t mask, bool recursive);
-void rewrite_cached_paths(const char *oldpathpf, const char *oldname, const char *newpathpf, const char *newname);
-int remove_subtree(int fd, char *path);
+// @TODO: pass in watch ptr instad of path,mask,recursive
+int watch_subtree(const int pid, int fd, char *path, uint32_t mask, bool recursive);
+void rewrite_cached_paths(const int pid, const char *oldpathpf, const char *oldname, const char *newpathpf, const char *newname);
+int remove_subtree(const int pid, int fd, char *path);
 
 #endif

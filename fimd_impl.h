@@ -21,8 +21,8 @@ private:
     std::shared_ptr<fim::FimdHandle> findFimdWatcherByPids(const std::string hostUid, const std::vector<int> pids);
     char **getPathArrayFromSubject(const int pid, const fim::FimWatcherSubject subject);
     uint32_t getEventMaskFromSubject(const fim::FimWatcherSubject subject);
-    void createInotifyWatcher(const fim::FimWatcherSubject subject, char **patharr, uint32_t event_mask,
-        google::protobuf::RepeatedField<google::protobuf::int32> *procFds);
+    void createInotifyWatcher(const fim::FimWatcherSubject subject, const int pid, char **patharr,
+        uint32_t event_mask, google::protobuf::RepeatedField<google::protobuf::int32> *procFds);
     mqd_t createMessageQueue(bool recreate);
     static void startMessageQueue(mqd_t mq);
     void sendKillSignalToWatcher(std::shared_ptr<fim::FimdHandle> watcher);
