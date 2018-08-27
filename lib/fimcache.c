@@ -101,7 +101,7 @@ int find_watch_checked(const int pid, const int wd) {
 void mark_cache_slot_empty(const int pid, const int slot) {
     int i;
 #if DEBUG
-    printf("        mark_cache_slot_empty: slot = %d\n", slot);
+    printf("        mark_cache_slot_empty: pid = %d; slot = %d\n", pid, slot);
     fflush(stdout);
 #endif
     for (i = 0; i < wlcache[pid][slot].pathc; ++i) {
@@ -148,10 +148,9 @@ static int find_empty_cache_slot(const int pid) {
 /**
  * add an item to the cache
  */
-int add_watch_to_cache(const int pid, const struct fimwatch *watch) {
+void add_watch_to_cache(const int pid, const struct fimwatch *watch) {
     int slot = find_empty_cache_slot(pid);
     wlcache[pid][slot] = *watch;
-    return slot;
 }
 
 /**

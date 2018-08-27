@@ -14,7 +14,7 @@ int find_watch(const int pid, const int wd);
 int find_watch_checked(const int pid, const int wd);
 void mark_cache_slot_empty(const int pid, const int slot);
 static int find_empty_cache_slot(const int pid);
-int add_watch_to_cache(const int pid, const struct fimwatch *watch);
+void add_watch_to_cache(const int pid, const struct fimwatch *watch);
 int path_name_to_cache_slot(const int pid, const char *path);
 char *wd_to_path_name(const int pid, const int wd);
 int wd_to_cache_slot(const int pid, const int wd);

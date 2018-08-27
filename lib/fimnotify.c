@@ -42,7 +42,6 @@ static mqd_t imq;
 static int reinitialize(const int pid, struct fimwatch *watch) {
     static int reinitc;
     int fd;
-    int slot;
     int i, cnt;
 
     if (watch->fd != EOF) {
@@ -74,6 +73,7 @@ static int reinitialize(const int pid, struct fimwatch *watch) {
 
     // free watch cache
     free_cache(pid);
+
     for (i = 0; i < watch->pathc; ++i) {
         watch->wd[i] = watch_subtree(pid, fd, watch->paths[i], watch->event_mask, watch->recursive);
     }
@@ -82,16 +82,16 @@ static int reinitialize(const int pid, struct fimwatch *watch) {
             ++cnt;
         }
     }
-
-    // cache information about the watch
-    slot = add_watch_to_cache(pid, watch);
-
 #if DEBUG
     if (watch->fd != EOF) {
         printf("rebuilt cache with %d entries\n", cnt);
         fflush(stdout);
     }
 #endif
+
+    // cache information about the watch
+    add_watch_to_cache(pid, watch);
+
     return fd;
 }
 
@@ -170,9 +170,10 @@ static size_t process_next_inotify_event(const int pid, int *fd, char *ptr, int 
             wdslot = wd_to_cache_slot(pid, event->wd);
             if (slot > -1 &&
                 wdslot > -1 &&
-                // only do this if we're watching recursively
                 wlcache[pid][slot].recursive) {
-                wlcache[pid][slot].wd[wdslot] = watch_subtree(pid, *fd, fullpath, wlcache[pid][slot].event_mask, true);
+                // only do this if watching recursively
+                wlcache[pid][slot].wd[wdslot] = watch_subtree(pid, *fd, fullpath,
+                    wlcache[pid][slot].event_mask, true);
             }
         }
     } else if (event->mask & IN_DELETE_SELF) {

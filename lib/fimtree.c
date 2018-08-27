@@ -25,17 +25,17 @@ void copy_root_paths(const int pid, int pathc, char *paths[]) {
         // check that command-line arguments are directories
         if (lstat(paths[i], &sb) == EOF) {
 #if DEBUG
-            fprintf(stderr, "lstat() failed on '%s'\n", paths[i]);
+            fprintf(stderr, "`lstat` failed on '%s'\n", paths[i]);
             perror("lstat");
 #endif
-            return;
+            continue;
         }
         if (!S_ISDIR(sb.st_mode)) {
 #if DEBUG
             fprintf(stderr, "'%s' is not a directory\n", paths[i]);
             perror("S_ISDIR");
 #endif
-            return;
+            continue;
         }
     }
 
@@ -79,10 +79,10 @@ void copy_root_paths(const int pid, int pathc, char *paths[]) {
         }
 
         for (j = 0; j < i; ++j) {
-            if ((rootstat[pid][j].st_ino == rootstat[pid][j].st_ino) &&
-                (rootstat[pid][j].st_dev == rootstat[pid][j].st_dev)) {
+            if ((rootstat[pid][i].st_ino == rootstat[pid][j].st_ino) &&
+                (rootstat[pid][i].st_dev == rootstat[pid][j].st_dev)) {
 #if DEBUG
-                fprintf(stderr, "duplicate filesystem objects: %s, %s\n", paths[j], paths[j]);
+                fprintf(stderr, "duplicate filesystem objects: %s, %s\n", paths[i], paths[j]);
                 return;
 #endif
             }
