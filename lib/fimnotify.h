@@ -9,6 +9,7 @@
 #define MQ_EXIT_MESSAGE "exit"
 
 static const int INOTIFY_READ_BUF_LEN = (100 * (sizeof(struct inotify_event) + NAME_MAX + 1));
+static int inotifyreadc = 0; // counts number of `read`s from inotify file descriptor
 
 struct fimwatch_event {
     uint32_t event_mask;

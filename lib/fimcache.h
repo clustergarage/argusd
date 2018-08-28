@@ -10,6 +10,7 @@
 
 void free_cache(const int pid);
 void check_cache_consistency(const int pid);
+void remove_item_from_cache(struct fimwatch *watch, const int index);
 int find_watch(const int pid, const int wd);
 int find_watch_checked(const int pid, const int wd);
 void mark_cache_slot_empty(const int pid, const int slot);

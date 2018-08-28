@@ -24,8 +24,6 @@ extern int wlcachec[WATCH_MAX];
 extern uint32_t imask;
 extern bool irecursive;
 // set local static variables
-static int readbufsize = 0;
-static int inotifyreadc = 0;
 static mqd_t imq;
 
 /**
@@ -91,6 +89,11 @@ static int reinitialize(const int pid, struct fimwatch *watch) {
 
     // cache information about the watch
     add_watch_to_cache(pid, watch);
+
+    // check cache consistency right away, in case there are multiple
+    // containers in a single pod that don't have a path on the
+    // filesystem that we specified to watch
+    check_cache_consistency(pid);
 
     return fd;
 }
@@ -390,10 +393,6 @@ static size_t process_next_inotify_event(const int pid, int *fd, char *ptr, int 
     }
 
 sendevent: ; // hack to get past label syntax error
-#if DEBUG
-    printf("sendevent: %s [%d]\n", path, (event->mask & IN_ISDIR));
-    fflush(stdout);
-#endif
     struct fimwatch_event fwevent = {
         .event_mask = event->mask,
         .path_name = path,                          // name of the watched directory
@@ -402,8 +401,8 @@ sendevent: ; // hack to get past label syntax error
     };
 
 #if DEBUG
-    printf("[%d]\t%s/%s\t[%d]\n", fwevent.event_mask, fwevent.path_name,
-        fwevent.file_name, fwevent.is_dir);
+    printf("send event: path = %s; file: %s; event mask = %d; dir: %d\n", fwevent.path_name, fwevent.file_name,
+        fwevent.event_mask, fwevent.is_dir);
     fflush(stdout);
 #endif
 
@@ -433,7 +432,7 @@ static void process_inotify_events(const int pid, int *fd) {
     int first = 1;
     char *ptr;
 
-    len = read(*fd, buf, (readbufsize > 0 ? readbufsize : INOTIFY_READ_BUF_LEN));
+    len = read(*fd, buf, INOTIFY_READ_BUF_LEN);
     if (len == EOF) {
 #if DEBUG
         perror("read");

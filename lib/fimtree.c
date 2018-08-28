@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/inotify.h>
+#include <unistd.h>
 
 #include "fimtree.h"
 #include "fimcache.h"
@@ -22,7 +23,7 @@ void copy_root_paths(const int pid, int pathc, char *paths[]) {
 
     // count the number of root paths and check that the paths are valid
     for (i = 0, rootpathc[pid] = 0; i < pathc; ++i, ++rootpathc[pid]) {
-        // check that command-line arguments are directories
+        // check the paths are directories
         if (lstat(paths[i], &sb) == EOF) {
 #if DEBUG
             fprintf(stderr, "`lstat` failed on '%s'\n", paths[i]);
@@ -30,10 +31,10 @@ void copy_root_paths(const int pid, int pathc, char *paths[]) {
 #endif
             continue;
         }
+
         if (!S_ISDIR(sb.st_mode)) {
 #if DEBUG
             fprintf(stderr, "'%s' is not a directory\n", paths[i]);
-            perror("S_ISDIR");
 #endif
             continue;
         }
@@ -62,7 +63,7 @@ void copy_root_paths(const int pid, int pathc, char *paths[]) {
 #if DEBUG
             perror("strdup");
 #endif
-            return;
+            continue;
         }
 
         // if the same filesystem object appears more than once in the command
@@ -79,11 +80,11 @@ void copy_root_paths(const int pid, int pathc, char *paths[]) {
         }
 
         for (j = 0; j < i; ++j) {
-            if ((rootstat[pid][i].st_ino == rootstat[pid][j].st_ino) &&
-                (rootstat[pid][i].st_dev == rootstat[pid][j].st_dev)) {
+            if (rootstat[pid][i].st_ino == rootstat[pid][j].st_ino &&
+                rootstat[pid][i].st_dev == rootstat[pid][j].st_dev) {
 #if DEBUG
                 fprintf(stderr, "duplicate filesystem objects: %s, %s\n", paths[i], paths[j]);
-                return;
+                continue;
 #endif
             }
         }
@@ -161,6 +162,7 @@ int watch_path(const char *path) {
     // view of the filesystem tree
     // @TODO: make this configurable if one wants to watch individual file(s)?
     flags |= IN_ONLYDIR | IN_CREATE | IN_MOVED_FROM | IN_MOVED_TO | IN_DELETE_SELF;
+    // @TODO: follow symlinks properly (IN_DONT_FOLLOW?)
     if (find_root_path(ipid, path) != NULL) {
         flags |= IN_MOVE_SELF;
     }
@@ -179,7 +181,8 @@ int watch_path(const char *path) {
         if (errno == ENOENT) {
             return 0;
         } else {
-            exit(EXIT_FAILURE);
+            //exit(EXIT_FAILURE);
+            return -1;
         }
     }
 
@@ -238,6 +241,7 @@ int watch_subtree(const int pid, int fd, char *path, uint32_t mask, bool recursi
     printf("    watch_subtree: %s: %d entries added\n", path, wlpathc[pid]);
     fflush(stdout);
 #endif
+
     return iwd;
 }
 
