@@ -5,6 +5,7 @@
 #include <sys/inotify.h>
 #include <future>
 #include <memory>
+#include <regex>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -214,6 +215,7 @@ void FimdImpl::startMessageQueue(mqd_t mq) {
         } else {
             fimwatch_event *fwevent = reinterpret_cast<struct fimwatch_event *>(buffer);
             std::stringstream ss;
+            std::regex proc_regex("/proc/[0-9]+/root");
 
             if (fwevent->event_mask & IN_ACCESS)             ss << "IN_ACCESS";
             else if (fwevent->event_mask & IN_MODIFY)        ss << "IN_MODIFY";
@@ -228,9 +230,8 @@ void FimdImpl::startMessageQueue(mqd_t mq) {
             else if (fwevent->event_mask & IN_MOVED_TO)      ss << "IN_MOVED_TO";
             else if (fwevent->event_mask & IN_MOVE_SELF)     ss << "IN_MOVE_SELF";
 
-            // @TODO: replace /proc/$PID/root for log-readability
-            ss << ": " << fwevent->path_name << "/" << fwevent->file_name <<
-                " [" << (fwevent->is_dir ? "directory" : "file") << "]";
+            ss << ": " << std::regex_replace(fwevent->path_name, proc_regex, "") << "/" <<
+                fwevent->file_name << " [" << (fwevent->is_dir ? "directory" : "file") << "]";
             LOG(INFO) << ss.str();
         }
     } while (!done);

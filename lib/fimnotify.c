@@ -186,7 +186,6 @@ static size_t process_next_inotify_event(const int pid, int *fd, char *ptr, int 
         printf("clearing watchlist item %d (%s)\n", event->wd, path);
         fflush(stdout);
 #endif
-
         if (find_root_path(pid, path) != NULL) {
             remove_root_path(pid, path);
         }

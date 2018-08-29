@@ -20,7 +20,6 @@ struct fimwatch_event {
 static int reinitialize(const int pid, struct fimwatch *watch);
 static size_t process_next_inotify_event(const int pid, int *fd, char *buf, int len, int first);
 static void process_inotify_events(const int pid, int *fd);
-// @TODO: more consts?
 int start_inotify_watcher(const int pid, int pathc, char *paths[], uint32_t mask, bool recursive, int processevtfd, mqd_t mq);
 
 #endif

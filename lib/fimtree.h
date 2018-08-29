@@ -20,7 +20,7 @@ void remove_root_path(const int pid, const char *path);
 int traverse_tree(const char *path, const struct stat *sb, int tflag, struct FTW *ftwbuf);
 int watch_path(const char *path);
 int watch_path_recursive(const char *path);
-// @TODO: pass in watch ptr instad of path,mask,recursive
+// @TODO: pass in watch ptr instead of path,mask,recursive
 int watch_subtree(const int pid, int fd, char *path, uint32_t mask, bool recursive);
 void rewrite_cached_paths(const int pid, const char *oldpathpf, const char *oldname, const char *newpathpf, const char *newname);
 int remove_subtree(const int pid, int fd, char *path);
