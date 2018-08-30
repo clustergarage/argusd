@@ -130,6 +130,15 @@ ExternalProject_Add(glog
     -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
 )
 
+# Builds glog project from the git repo
+ExternalProject_Add(fmt
+  PREFIX fmt
+  GIT_REPOSITORY https://github.com/fmtlib/fmt
+  GIT_TAG 5.1.0
+  CMAKE_CACHE_ARGS
+    -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
+)
+
 set(_CARES_LIBCARES ${CMAKE_CURRENT_BINARY_DIR}/c-ares/lib/libcares.a)
 set(_ZLIB_LIBZLIB ${CMAKE_CURRENT_BINARY_DIR}/zlib/lib/libz.a)
 set(_PROTOBUF_LIBPROTOBUF ${CMAKE_CURRENT_BINARY_DIR}/protobuf/lib/libprotobuf.a)
@@ -142,6 +151,8 @@ set(_gRPC_LIBGRPCPP ${CMAKE_CURRENT_BINARY_DIR}/grpc/lib/libgrpc++_unsecure.a
   ${CMAKE_CURRENT_BINARY_DIR}/grpc/lib/libgrpc_unsecure.a
   ${CMAKE_CURRENT_BINARY_DIR}/grpc/lib/libgpr.a
   ${CMAKE_CURRENT_BINARY_DIR}/grpc/lib/libaddress_sorting.a)
+set(_FMT_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/fmt/include)
+set(_FMT_LIBFMT ${CMAKE_CURRENT_BINARY_DIR}/fmt/lib/libfmt.a)
 
 include_directories(
   # Include generated *.pb.h files
@@ -152,6 +163,7 @@ include_directories(
   ${_GFLAGS_INCLUDE_DIR}
   ${_GLOG_INCLUDE_DIR}
   ${_gRPC_INCLUDE_DIR}
+  ${_FMT_INCLUDE_DIR}
 )
 add_subdirectory(lib fim-proto)
 
@@ -169,6 +181,7 @@ add_executable(fimd
 add_dependencies(fimd fimnotify grpc glog)
 target_link_libraries(fimd
   fimnotify
+  ${_FMT_LIBFMT}
   ${_gRPC_LIBGRPCPP}
   ${_GLOG_LIBGLOG}
   ${_GFLAGS_LIBGFLAGS}

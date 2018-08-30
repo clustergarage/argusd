@@ -10,6 +10,7 @@
 #include <string>
 #include <thread>
 
+#include <fmt/format.h>
 #include <glog/logging.h>
 #include <grpc/grpc.h>
 #include <grpc++/server_context.h>
@@ -20,6 +21,8 @@ extern "C" {
 }
 
 namespace fimd {
+std::string FimdImpl::DEFAULT_FORMAT = "{event} \"{path}/{file}\" [{ftype}] {mask}";
+
 grpc::Status FimdImpl::CreateWatch(grpc::ServerContext *context, const fim::FimdConfig *request, fim::FimdHandle *response) {
     auto pids = getPidsFromRequest(request);
     if (!pids.size()) {
@@ -214,25 +217,31 @@ void FimdImpl::startMessageQueue(mqd_t mq) {
             done = true;
         } else {
             fimwatch_event *fwevent = reinterpret_cast<struct fimwatch_event *>(buffer);
-            std::stringstream ss;
             std::regex proc_regex("/proc/[0-9]+/root");
 
-            if (fwevent->event_mask & IN_ACCESS)             ss << "IN_ACCESS";
-            else if (fwevent->event_mask & IN_MODIFY)        ss << "IN_MODIFY";
-            else if (fwevent->event_mask & IN_ATTRIB)        ss << "IN_ATTRIB";
-            else if (fwevent->event_mask & IN_OPEN)          ss << "IN_OPEN";
-            else if (fwevent->event_mask & IN_CLOSE_WRITE)   ss << "IN_CLOSE_WRITE";
-            else if (fwevent->event_mask & IN_CLOSE_NOWRITE) ss << "IN_CLOSE_NOWRITE";
-            else if (fwevent->event_mask & IN_CREATE)        ss << "IN_CREATE";
-            else if (fwevent->event_mask & IN_DELETE)        ss << "IN_DELETE";
-            else if (fwevent->event_mask & IN_DELETE_SELF)   ss << "IN_DELETE_SELF";
-            else if (fwevent->event_mask & IN_MOVED_FROM)    ss << "IN_MOVED_FROM";
-            else if (fwevent->event_mask & IN_MOVED_TO)      ss << "IN_MOVED_TO";
-            else if (fwevent->event_mask & IN_MOVE_SELF)     ss << "IN_MOVE_SELF";
+            std::string mask_str;
+            if (fwevent->event_mask & IN_ACCESS)             mask_str = "IN_ACCESS";
+            else if (fwevent->event_mask & IN_MODIFY)        mask_str = "IN_MODIFY";
+            else if (fwevent->event_mask & IN_ATTRIB)        mask_str = "IN_ATTRIB";
+            else if (fwevent->event_mask & IN_OPEN)          mask_str = "IN_OPEN";
+            else if (fwevent->event_mask & IN_CLOSE_WRITE)   mask_str = "IN_CLOSE_WRITE";
+            else if (fwevent->event_mask & IN_CLOSE_NOWRITE) mask_str = "IN_CLOSE_NOWRITE";
+            else if (fwevent->event_mask & IN_CREATE)        mask_str = "IN_CREATE";
+            else if (fwevent->event_mask & IN_DELETE)        mask_str = "IN_DELETE";
+            else if (fwevent->event_mask & IN_DELETE_SELF)   mask_str = "IN_DELETE_SELF";
+            else if (fwevent->event_mask & IN_MOVED_FROM)    mask_str = "IN_MOVED_FROM";
+            else if (fwevent->event_mask & IN_MOVED_TO)      mask_str = "IN_MOVED_TO";
+            else if (fwevent->event_mask & IN_MOVE_SELF)     mask_str = "IN_MOVE_SELF";
 
-            ss << ": " << std::regex_replace(fwevent->path_name, proc_regex, "") << "/" <<
-                fwevent->file_name << " [" << (fwevent->is_dir ? "directory" : "file") << "]";
-            LOG(INFO) << ss.str();
+            fmt::memory_buffer out;
+            fmt::format_to(out, FimdImpl::DEFAULT_FORMAT,
+                fmt::arg("event", mask_str),
+                fmt::arg("path", std::regex_replace(fwevent->path_name, proc_regex, "")),
+                fmt::arg("file", fwevent->file_name),
+                fmt::arg("ftype", fwevent->is_dir ? "directory" : "file"),
+                fmt::arg("mask", fwevent->event_mask)
+            );
+            LOG(INFO) << fmt::to_string(out);
         }
     } while (!done);
 

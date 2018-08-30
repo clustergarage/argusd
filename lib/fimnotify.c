@@ -400,8 +400,8 @@ sendevent: ; // hack to get past label syntax error
     };
 
 #if DEBUG
-    printf("send event: path = %s; file: %s; event mask = %d; dir: %d\n", fwevent.path_name, fwevent.file_name,
-        fwevent.event_mask, fwevent.is_dir);
+    printf("send event: path = %s; file: %s; event mask = %d; dir: %d\n", fwevent.path_name,
+        fwevent.file_name, fwevent.event_mask, fwevent.is_dir);
     fflush(stdout);
 #endif
 

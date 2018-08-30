@@ -33,6 +33,8 @@ private:
         return FimdUtil::eraseSubstr(containerId, "docker://");
     }
 
+    static std::string DEFAULT_FORMAT;
+
     std::vector<std::shared_ptr<fim::FimdHandle>> watchers_;
     mqd_t mq_;
 };
