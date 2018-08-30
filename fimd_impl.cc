@@ -21,7 +21,7 @@ extern "C" {
 }
 
 namespace fimd {
-std::string FimdImpl::DEFAULT_FORMAT = "{event} \"{path}/{file}\" [{ftype}] {mask}";
+std::string FimdImpl::DEFAULT_FORMAT = "{event} {ftype} '{path}/{file}' ({pod}:{node})";
 
 grpc::Status FimdImpl::CreateWatch(grpc::ServerContext *context, const fim::FimdConfig *request, fim::FimdHandle *response) {
     auto pids = getPidsFromRequest(request);
@@ -32,7 +32,7 @@ grpc::Status FimdImpl::CreateWatch(grpc::ServerContext *context, const fim::Fimd
     // find existing watcher by pid in case we need to update
     // inotify_add_watcher is designed to both add and modify depending
     // on if a fd exists already for this path
-    auto watcher = findFimdWatcherByPids(request->hostuid(), pids);
+    auto watcher = findFimdWatcherByPids(request->nodename(), pids);
     if (watcher == nullptr) {
         LOG(INFO) << "Starting inotify watcher...";
     } else {
@@ -43,8 +43,10 @@ grpc::Status FimdImpl::CreateWatch(grpc::ServerContext *context, const fim::Fimd
         watcher->clear_processeventfd();
     }
 
-    response->set_hostuid(request->hostuid().c_str());
-    response->set_mqfd(static_cast<google::protobuf::int32>(createMessageQueue(watcher != nullptr)));
+    response->set_nodename(request->nodename().c_str());
+    response->set_podname(request->podname().c_str());
+    response->set_mqfd(static_cast<google::protobuf::int32>(createMessageQueue(request->logformat(),
+        request->nodename(), request->podname(), (watcher != nullptr))));
 
     for_each(pids.cbegin(), pids.cend(), [&](const int pid) {
         for_each(request->subject().cbegin(), request->subject().cend(), [&](const fim::FimWatcherSubject subject) {
@@ -75,7 +77,7 @@ grpc::Status FimdImpl::DestroyWatch(grpc::ServerContext *context, const fim::Fim
 
     LOG(INFO) << "Stopping inotify watcher...";
 
-    auto watcher = findFimdWatcherByPids(request->hostuid(), pids);
+    auto watcher = findFimdWatcherByPids(request->nodename(), pids);
     if (watcher != nullptr) {
         // stop existing message queue
         sendExitMessageToMessageQueue(watcher);
@@ -98,7 +100,7 @@ std::vector<int> FimdImpl::getPidsFromRequest(const fim::FimdConfig *request) {
     return pids;
 }
 
-std::shared_ptr<fim::FimdHandle> FimdImpl::findFimdWatcherByPids(const std::string hostUid, const std::vector<int> pids) {
+std::shared_ptr<fim::FimdHandle> FimdImpl::findFimdWatcherByPids(const std::string nodeName, const std::vector<int> pids) {
     auto it = find_if(watchers_.cbegin(), watchers_.cend(), [&](std::shared_ptr<fim::FimdHandle> watcher) {
         bool foundPid;
         for (auto pid = pids.cbegin(); pid != pids.cend(); ++pid) {
@@ -106,7 +108,7 @@ std::shared_ptr<fim::FimdHandle> FimdImpl::findFimdWatcherByPids(const std::stri
                 [&](int p) { return p == *pid; });
             foundPid = watcherPid != watcher->pid().cend();
         }
-        return watcher->hostuid() == hostUid && foundPid;
+        return watcher->nodename() == nodeName && foundPid;
     });
     if (it != watchers_.cend()) {
         return *it;
@@ -172,7 +174,7 @@ void FimdImpl::createInotifyWatcher(const fim::FimWatcherSubject subject, const 
     }
 }
 
-mqd_t FimdImpl::createMessageQueue(bool recreate) {
+mqd_t FimdImpl::createMessageQueue(const std::string logFormat, const std::string nodeName, const std::string podName, bool recreate) {
     mq_attr attr;
     // initialize the queue attributes
     attr.mq_flags = 0;
@@ -195,15 +197,15 @@ mqd_t FimdImpl::createMessageQueue(bool recreate) {
     }
 
     // start message queue
-    std::packaged_task<void(mqd_t)> queue(startMessageQueue);
-    std::thread queueThread(move(queue), mq_);
+    std::packaged_task<void(const std::string, const std::string, const std::string, mqd_t)> queue(startMessageQueue);
+    std::thread queueThread(move(queue), logFormat, nodeName, podName, mq_);
     // start as daemon process
     queueThread.detach();
 
     return mq_;
 }
 
-void FimdImpl::startMessageQueue(mqd_t mq) {
+void FimdImpl::startMessageQueue(const std::string logFormat, const std::string nodeName, const std::string podName, mqd_t mq) {
     bool done = false;
     do {
         char buffer[MQ_MAX_SIZE + 1];
@@ -234,14 +236,18 @@ void FimdImpl::startMessageQueue(mqd_t mq) {
             else if (fwevent->event_mask & IN_MOVE_SELF)     mask_str = "IN_MOVE_SELF";
 
             fmt::memory_buffer out;
-            fmt::format_to(out, FimdImpl::DEFAULT_FORMAT,
-                fmt::arg("event", mask_str),
-                fmt::arg("path", std::regex_replace(fwevent->path_name, proc_regex, "")),
-                fmt::arg("file", fwevent->file_name),
-                fmt::arg("ftype", fwevent->is_dir ? "directory" : "file"),
-                fmt::arg("mask", fwevent->event_mask)
-            );
-            LOG(INFO) << fmt::to_string(out);
+            try {
+                fmt::format_to(out, logFormat != "" ? logFormat : FimdImpl::DEFAULT_FORMAT,
+                    fmt::arg("event", mask_str),
+                    fmt::arg("ftype", fwevent->is_dir ? "directory" : "file"),
+                    fmt::arg("path", std::regex_replace(fwevent->path_name, proc_regex, "")),
+                    fmt::arg("file", fwevent->file_name),
+                    fmt::arg("pod", podName),
+                    fmt::arg("node", nodeName));
+                LOG(INFO) << fmt::to_string(out);
+            } catch(const std::exception &e) {
+                LOG(WARNING) << "Malformed FimWatcher `.spec.logFormat`: \"" << e.what() << "\"";
+            }
         }
     } while (!done);
 

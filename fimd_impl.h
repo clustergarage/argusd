@@ -18,13 +18,13 @@ public:
 
 private:
     std::vector<int> getPidsFromRequest(const fim::FimdConfig *request);
-    std::shared_ptr<fim::FimdHandle> findFimdWatcherByPids(const std::string hostUid, const std::vector<int> pids);
+    std::shared_ptr<fim::FimdHandle> findFimdWatcherByPids(const std::string nodeName, const std::vector<int> pids);
     char **getPathArrayFromSubject(const int pid, const fim::FimWatcherSubject subject);
     uint32_t getEventMaskFromSubject(const fim::FimWatcherSubject subject);
     void createInotifyWatcher(const fim::FimWatcherSubject subject, const int pid, char **patharr,
         uint32_t event_mask, google::protobuf::RepeatedField<google::protobuf::int32> *procFds);
-    mqd_t createMessageQueue(bool recreate);
-    static void startMessageQueue(mqd_t mq);
+    mqd_t createMessageQueue(const std::string logFormat, const std::string nodeName, const std::string podName, bool recreate);
+    static void startMessageQueue(const std::string logFormat, const std::string nodeName, const std::string podName, mqd_t mq);
     void sendKillSignalToWatcher(std::shared_ptr<fim::FimdHandle> watcher);
     void eraseEventProcessfd(google::protobuf::RepeatedField<google::protobuf::int32> *eventProcessfds, const int processfd);
     void sendExitMessageToMessageQueue(std::shared_ptr<fim::FimdHandle> watcher);
