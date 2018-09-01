@@ -33,6 +33,7 @@ void check_cache_consistency(const int pid) {
         if (wlcache[pid][i].pathc == -1) {
             continue;
         }
+
         for (j = 0; j < wlcache[pid][i].pathc; ++j) {
             if (lstat(wlcache[pid][i].paths[j], &sb) == EOF) {
 #if DEBUG
@@ -44,13 +45,14 @@ void check_cache_consistency(const int pid) {
                 continue;
             }
 
+#if ONLY_DIR
             if (!S_ISDIR(sb.st_mode)) {
 #if DEBUG
                 fprintf(stderr, "check_cache_consistency: %s is not a directory\n", wlcache[pid][i].paths[j]);
-                perror("S_ISDIR");
 #endif
                 continue;
             }
+#endif
         }
     }
 }
@@ -103,10 +105,12 @@ int find_watch_checked(const int pid, const int wd) {
  */
 void mark_cache_slot_empty(const int pid, const int slot) {
     int i;
+    /*
 #if DEBUG
     printf("        mark_cache_slot_empty: pid = %d; slot = %d\n", pid, slot);
     fflush(stdout);
 #endif
+    */
     for (i = 0; i < wlcache[pid][slot].pathc; ++i) {
         wlcache[pid][slot].wd[i] = -1;
         wlcache[pid][slot].paths[i] = '\0';

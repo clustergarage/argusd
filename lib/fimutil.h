@@ -5,7 +5,10 @@
 #include <stdint.h>
 
 #ifndef DEBUG
-#define DEBUG 0
+#define DEBUG 1
+#endif
+#ifndef ONLY_DIR
+#define ONLY_DIR 1
 #endif
 
 // @TODO: change this to dynamic allocation?

@@ -32,12 +32,14 @@ void copy_root_paths(const int pid, int pathc, char *paths[]) {
             continue;
         }
 
+#if ONLY_DIR
         if (!S_ISDIR(sb.st_mode)) {
 #if DEBUG
             fprintf(stderr, "'%s' is not a directory\n", paths[i]);
 #endif
             continue;
         }
+#endif
     }
 
     // create a copy of the root directory path names
@@ -144,10 +146,16 @@ void remove_root_path(const int pid, const char *path) {
  * that the tree traversal should continue
  */
 int traverse_tree(const char *path, const struct stat *sb, int tflag, struct FTW *ftwbuf) {
+#if ONLY_DIR
     if (!S_ISDIR(sb->st_mode)) {
         // ignore nondirectory files
         return 0;
     }
+#endif
+#if DEBUG
+        printf("    traverse_tree: %s\n", path);
+        fflush(stdout);
+#endif
     return watch_path(path);
 }
 
@@ -157,19 +165,22 @@ int traverse_tree(const char *path, const struct stat *sb, int tflag, struct FTW
  * returns number of watches/cache entries added for this subtree
  */
 int watch_path(const char *path) {
-    int slot, flags;
+    int wd, slot, flags;
     // we need to watch certain events at all times for keeping a consistent
     // view of the filesystem tree
-    // @TODO: make this configurable if one wants to watch individual file(s)?
-    flags |= IN_ONLYDIR | IN_CREATE | IN_MOVED_FROM | IN_MOVED_TO | IN_DELETE_SELF;
-    // @TODO: follow symlinks properly (IN_DONT_FOLLOW?)
+#if ONLY_DIR
+    flags |= IN_ONLYDIR;
+#endif
+    flags |= IN_CREATE | IN_MOVED_FROM | IN_MOVED_TO | IN_DELETE_SELF;
+
+    // @TODO: follow symlinks properly
     if (find_root_path(ipid, path) != NULL) {
         flags |= IN_MOVE_SELF;
     }
 
     // make directories for events
-    iwd = inotify_add_watch(ifd, path, imask | flags);
-    if (iwd == EOF) {
+    wd = inotify_add_watch(iwatch->fd, path, iwatch->event_mask | flags);
+    if (wd == EOF) {
         // by the time we come to create a watch, the directory might already
         // have been deleted or renamed, in which case we'll get an ENOENT
         // error; log the error, but carry on execution
@@ -186,16 +197,23 @@ int watch_path(const char *path) {
         }
     }
 
-    if (find_watch(ipid, iwd) > -1) {
+    if (find_watch(ipid, wd) > -1) {
         // this watch descriptor is already in the cache
 #if DEBUG
-        printf("wd: %d already in cache (%s)\n", iwd, path);
+        printf("wd: %d already in cache (%s)\n", wd, path);
         fflush(stdout);
 #endif
         return 0;
     }
 
-    ++wlpathc[ipid];
+    iwatch->wd[ipathc] = wd;
+    iwatch->paths[ipathc] = strdup(path);
+    if (iwatch->paths[ipathc] == NULL) {
+#if DEBUG
+        perror("strdup");
+#endif
+    }
+    ++ipathc;
 
     return 0;
 }
@@ -217,32 +235,61 @@ int watch_path_recursive(const char *path) {
         fflush(stdout);
 #endif
     }
-    return wlpathc[ipid];
+    return ipathc;
 }
 
 /**
  * add watches and cache entries for a subtree, logging a message noting the
  * number entries added
  */
-int watch_subtree(const int pid, int fd, char *path, uint32_t mask, bool recursive) {
-    wlpathc[pid] = 0;
-    ipid = pid;
-    ifd = fd;
-    imask = mask;
-    irecursive = recursive;
-
-    if (recursive) {
-        watch_path_recursive(path);
-    } else {
-        watch_path(path);
+void watch_subtree(const int pid, struct fimwatch *watch) {
+    char *paths[WATCH_MAX];
+    int i;
+    int pathc = rootpathc[pid];
+    for (i = 0; i < pathc; ++i) {
+        paths[i] = strdup(rootpaths[pid][i]);
     }
 
-#if DEBUG
-    printf("    watch_subtree: %s: %d entries added\n", path, wlpathc[pid]);
-    fflush(stdout);
-#endif
+    ipid = pid;
+    iwatch = watch;
+    iwatch->pathc = 0;
+    ipathc = 0;
 
-    return iwd;
+    for (i = 0; i < pathc; ++i) {
+        if (watch->recursive) {
+            watch_path_recursive(paths[i]);
+        } else {
+            watch_path(paths[i]);
+        }
+#if DEBUG
+        printf("    watch_subtree: %s: %d entries added\n", paths[i], /*watch->pathc*/ipathc);
+        fflush(stdout);
+#endif
+    }
+    iwatch->pathc = ipathc;
+
+    printf("  $$$$ add watch to cache:\n");
+    printf("    $$   fd = %d\n", watch->fd);
+    printf("    $$   pathc = %d\n", watch->pathc);
+    fflush(stdout);
+    for (i = 0; i < watch->pathc; ++i) {
+        printf("     $     wd[%d] = %d\n", i, watch->wd[i]);
+        fflush(stdout);
+    }
+    for (i = 0; i < watch->pathc; ++i) {
+        printf("     $     paths[%d] = %s\n", i, watch->paths[i]);
+        fflush(stdout);
+    }
+    printf("    $$   event_mask = %d\n", watch->event_mask);
+    printf("    $$   recursive = %d\n", watch->recursive);
+    fflush(stdout);
+
+    // cache information about the watch
+    add_watch_to_cache(pid, watch);
+
+    for (i = 0; i < pathc; ++i) {
+        free(paths[i]);
+    }
 }
 
 /**

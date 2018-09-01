@@ -21,11 +21,12 @@ extern "C" {
 }
 
 namespace fimd {
-std::string FimdImpl::DEFAULT_FORMAT = "{event} {ftype} '{path}/{file}' ({pod}:{node})";
+std::string FimdImpl::DEFAULT_FORMAT = "{event} {ftype} '{path}{sep}{file}' ({pod}:{node})";
 
 grpc::Status FimdImpl::CreateWatch(grpc::ServerContext *context, const fim::FimdConfig *request, fim::FimdHandle *response) {
     auto pids = getPidsFromRequest(request);
     if (!pids.size()) {
+        LOG(INFO) << "grpc::Status::CANCELLED";
         return grpc::Status::CANCELLED;
     }
 
@@ -66,12 +67,14 @@ grpc::Status FimdImpl::CreateWatch(grpc::ServerContext *context, const fim::Fimd
         });
     }
 
+    LOG(INFO) << "[CreateWatch] grpc::Status::OK";
     return grpc::Status::OK;
 }
 
 grpc::Status FimdImpl::DestroyWatch(grpc::ServerContext *context, const fim::FimdConfig *request, fim::Empty *response) {
     auto pids = getPidsFromRequest(request);
     if (!pids.size()) {
+        LOG(INFO) << "grpc::Status::CANCELLED";
         return grpc::Status::CANCELLED;
     }
 
@@ -86,6 +89,7 @@ grpc::Status FimdImpl::DestroyWatch(grpc::ServerContext *context, const fim::Fim
     }
     watchers_.erase(remove(watchers_.begin(), watchers_.end(), watcher), watchers_.end());
 
+    LOG(INFO) << "[DestroyWatch] grpc::Status::OK";
     return grpc::Status::OK;
 }
 
@@ -166,12 +170,29 @@ void FimdImpl::createInotifyWatcher(const fim::FimWatcherSubject subject, const 
     // start as daemon process
     taskThread.detach();
 
-    // @TODO: re-evaluate this timeout
-    std::future_status status = result.wait_for(std::chrono::milliseconds(100));
-    if (status == std::future_status::ready &&
-        result.get() != EXIT_SUCCESS) {
-        eraseEventProcessfd(eventProcessfds, processfd);
-    }
+    std::packaged_task<void(void)> cleanup([&] {
+        std::future_status status;
+        do {
+            status = result.wait_for(std::chrono::seconds(1));
+            if (status == std::future_status::deferred) {
+                LOG(INFO) << "deferred";
+            } else if (status == std::future_status::timeout) {
+                LOG(INFO) << "timeout";
+            } else if (status == std::future_status::ready) {
+                LOG(INFO) << "ready!";
+            }
+        } while (status != std::future_status::ready);
+
+        if (//status == std::future_status::ready &&
+            result.valid() &&
+            result.get() != EXIT_SUCCESS) {
+            eraseEventProcessfd(eventProcessfds, processfd);
+        }
+    });
+    //std::thread cleanupThread(std::move(cleanup));
+    //cleanupThread.detach();
+
+    LOG(INFO) << " DONE ";
 }
 
 mqd_t FimdImpl::createMessageQueue(const std::string logFormat, const std::string nodeName, const std::string podName, bool recreate) {
@@ -242,6 +263,7 @@ void FimdImpl::startMessageQueue(const std::string logFormat, const std::string 
                     fmt::arg("ftype", fwevent->is_dir ? "directory" : "file"),
                     fmt::arg("path", std::regex_replace(fwevent->path_name, proc_regex, "")),
                     fmt::arg("file", fwevent->file_name),
+                    fmt::arg("sep", fwevent->file_name != "" ? "/" : ""),
                     fmt::arg("pod", podName),
                     fmt::arg("node", nodeName));
                 LOG(INFO) << fmt::to_string(out);
