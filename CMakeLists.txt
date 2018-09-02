@@ -57,7 +57,7 @@ ExternalProject_Add(protobuf
   PREFIX protobuf
   DEPENDS zlib
   GIT_REPOSITORY https://github.com/google/protobuf
-  GIT_TAG v3.5.1
+  GIT_TAG v3.6.1
   SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/protobuf/src/protobuf
   BUILD_IN_SOURCE 1
   CONFIGURE_COMMAND ${CMAKE_COMMAND} cmake/
@@ -101,7 +101,7 @@ ExternalProject_Add(grpc
   PREFIX grpc
   DEPENDS c-ares openssl protobuf zlib
   GIT_REPOSITORY https://github.com/grpc/grpc
-  GIT_TAG v1.13.1
+  GIT_TAG v1.14.2
   CMAKE_CACHE_ARGS
     -DgRPC_INSTALL:BOOL=ON
     -DgRPC_BUILD_TESTS:BOOL=OFF
@@ -193,5 +193,5 @@ target_link_libraries(fimd
 )
 
 # strip unnecessary symbols
-add_custom_command(TARGET fimd POST_BUILD
-  COMMAND strip -s $<TARGET_FILE:fimd>)
+#add_custom_command(TARGET fimd POST_BUILD
+#  COMMAND strip -s $<TARGET_FILE:fimd>)

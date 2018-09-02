@@ -87,7 +87,7 @@ static int reinitialize(const int pid, struct fimwatch *watch) {
     // check cache consistency right away, in case there are multiple
     // containers in a single pod that don't have a path on the
     // filesystem that we specified to watch
-    //check_cache_consistency(pid);
+    check_cache_consistency(pid);
 
     return fd;
 }
@@ -426,7 +426,7 @@ sendevent: ; // hack to get past label syntax error
 #endif
     }
 
-    //check_cache_consistency(pid);
+    check_cache_consistency(pid);
 
     return evtlen;
 }

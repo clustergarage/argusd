@@ -243,17 +243,17 @@ int watch_path_recursive(const char *path) {
  * number entries added
  */
 void watch_subtree(const int pid, struct fimwatch *watch) {
-    char *paths[WATCH_MAX];
     int i;
     int pathc = rootpathc[pid];
+    char **paths = calloc(pathc, sizeof(char *));
     for (i = 0; i < pathc; ++i) {
         paths[i] = strdup(rootpaths[pid][i]);
     }
 
     ipid = pid;
-    iwatch = watch;
-    iwatch->pathc = 0;
     ipathc = 0;
+	iwatch = malloc(sizeof(struct fimwatch));
+	*iwatch = *watch;
 
     for (i = 0; i < pathc; ++i) {
         if (watch->recursive) {
@@ -262,22 +262,29 @@ void watch_subtree(const int pid, struct fimwatch *watch) {
             watch_path(paths[i]);
         }
 #if DEBUG
-        printf("    watch_subtree: %s: %d entries added\n", paths[i], /*watch->pathc*/ipathc);
+        printf("    watch_subtree: %s: %d entries added\n", paths[i], ipathc);
         fflush(stdout);
 #endif
     }
-    iwatch->pathc = ipathc;
+
+	// deep copy watch object
+	watch->pathc = ipathc;
+    watch->paths = calloc(watch->pathc, sizeof(char *));
+	for (i = 0; i < watch->pathc; ++i) {
+		watch->wd[i] = iwatch->wd[i];
+		watch->paths[i] = strdup(iwatch->paths[i]);
+	}
 
     printf("  $$$$ add watch to cache:\n");
     printf("    $$   fd = %d\n", watch->fd);
     printf("    $$   pathc = %d\n", watch->pathc);
     fflush(stdout);
     for (i = 0; i < watch->pathc; ++i) {
-        printf("     $     wd[%d] = %d\n", i, watch->wd[i]);
+        printf("     $     iwd[%d] = %d\n", i, watch->wd[i]);
         fflush(stdout);
     }
     for (i = 0; i < watch->pathc; ++i) {
-        printf("     $     paths[%d] = %s\n", i, watch->paths[i]);
+        printf("     $     ipaths[%d] = %s\n", i, watch->paths[i]);
         fflush(stdout);
     }
     printf("    $$   event_mask = %d\n", watch->event_mask);
@@ -287,9 +294,16 @@ void watch_subtree(const int pid, struct fimwatch *watch) {
     // cache information about the watch
     add_watch_to_cache(pid, watch);
 
+	// free iwatch memory
+    for (i = 0; i < ipathc; ++i) {
+        free(iwatch->paths[i]);
+    }
+	free(iwatch);
+	// free paths memory
     for (i = 0; i < pathc; ++i) {
         free(paths[i]);
     }
+	free(paths);
 }
 
 /**

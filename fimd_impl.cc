@@ -170,6 +170,11 @@ void FimdImpl::createInotifyWatcher(const fim::FimWatcherSubject subject, const 
     // start as daemon process
     taskThread.detach();
 
+    //std::future_status status = result.wait_for(std::chrono::milliseconds(100));
+    //if (status == std::future_status::ready &&
+    //    result.get() != EXIT_SUCCESS) {
+    //    eraseEventProcessfd(eventProcessfds, processfd);
+    //}
     std::packaged_task<void(void)> cleanup([&] {
         std::future_status status;
         do {
@@ -204,6 +209,7 @@ mqd_t FimdImpl::createMessageQueue(const std::string logFormat, const std::strin
     attr.mq_curmsgs = 0;
 
     if (recreate) {
+        LOG(INFO) << "recreate :: mq_close | mq_unlink";
         mq_close(mq_);
         mq_unlink(MQ_QUEUE_NAME);
     }
