@@ -207,12 +207,12 @@ int watch_path(const char *path) {
     }
 
     iwatch->wd[ipathc] = wd;
+    iwatch->paths[ipathc] = malloc(sizeof(char *));
+    //if (iwatch->paths[ipathc] == NULL) {
+    //    //perror("strdup");
+    //    perror("malloc");
+    //}
     iwatch->paths[ipathc] = strdup(path);
-    if (iwatch->paths[ipathc] == NULL) {
-#if DEBUG
-        perror("strdup");
-#endif
-    }
     ++ipathc;
 
     return 0;
@@ -269,7 +269,7 @@ void watch_subtree(const int pid, struct fimwatch *watch) {
 
 	// deep copy watch object
 	watch->pathc = ipathc;
-    watch->paths = calloc(watch->pathc, sizeof(char *));
+    //watch->paths = calloc(watch->pathc, sizeof(char *));
 	for (i = 0; i < watch->pathc; ++i) {
 		watch->wd[i] = iwatch->wd[i];
 		watch->paths[i] = strdup(iwatch->paths[i]);
@@ -295,9 +295,9 @@ void watch_subtree(const int pid, struct fimwatch *watch) {
     add_watch_to_cache(pid, watch);
 
 	// free iwatch memory
-    for (i = 0; i < ipathc; ++i) {
-        free(iwatch->paths[i]);
-    }
+    //for (i = 0; i < ipathc; ++i) {
+    //    free(iwatch->paths[i]);
+    //}
 	free(iwatch);
 	// free paths memory
     for (i = 0; i < pathc; ++i) {

@@ -18,7 +18,7 @@ struct fimwatch {
     int fd;              // inotify file descriptor
     int wd[WATCH_MAX];   // array of watch descriptors (-1 if slot unused)
     int pathc;           // cached path count
-    char **paths;        // cached path name(s)
+    char *paths[WATCH_MAX];        // cached path name(s)
     uint32_t event_mask;
     bool recursive;
 };

@@ -551,13 +551,15 @@ int start_inotify_watcher(const int pid, int pathc, char *paths[], uint32_t mask
     struct fimwatch watch = {
         .fd = EOF,
         .pathc = pathc,
-        .paths = paths,
+        // @FIXME
+        //.paths = paths,
         .event_mask = mask,
         .recursive = recursive
     };
 
     printf(" @@@ initialize :: reinitialize @@@\n");
     fflush(stdout);
+
     // create an inotify instance and populate it with entries for paths
     fd = reinitialize(pid, &watch);
     if (fd == EOF) {

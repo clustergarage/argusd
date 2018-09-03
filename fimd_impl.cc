@@ -24,6 +24,7 @@ namespace fimd {
 std::string FimdImpl::DEFAULT_FORMAT = "{event} {ftype} '{path}{sep}{file}' ({pod}:{node})";
 
 grpc::Status FimdImpl::CreateWatch(grpc::ServerContext *context, const fim::FimdConfig *request, fim::FimdHandle *response) {
+	LOG(INFO) << "CreateWatch";
     auto pids = getPidsFromRequest(request);
     if (!pids.size()) {
         LOG(INFO) << "grpc::Status::CANCELLED";
@@ -72,6 +73,7 @@ grpc::Status FimdImpl::CreateWatch(grpc::ServerContext *context, const fim::Fimd
 }
 
 grpc::Status FimdImpl::DestroyWatch(grpc::ServerContext *context, const fim::FimdConfig *request, fim::Empty *response) {
+	LOG(INFO) << "DestroyWatch";
     auto pids = getPidsFromRequest(request);
     if (!pids.size()) {
         LOG(INFO) << "grpc::Status::CANCELLED";
@@ -170,11 +172,13 @@ void FimdImpl::createInotifyWatcher(const fim::FimWatcherSubject subject, const 
     // start as daemon process
     taskThread.detach();
 
-    //std::future_status status = result.wait_for(std::chrono::milliseconds(100));
-    //if (status == std::future_status::ready &&
-    //    result.get() != EXIT_SUCCESS) {
-    //    eraseEventProcessfd(eventProcessfds, processfd);
-    //}
+    std::future_status status = result.wait_for(std::chrono::milliseconds(100));
+    if (status == std::future_status::ready &&
+        result.get() != EXIT_SUCCESS) {
+        eraseEventProcessfd(eventProcessfds, processfd);
+    }
+
+    /*
     std::packaged_task<void(void)> cleanup([&] {
         std::future_status status;
         do {
@@ -194,6 +198,7 @@ void FimdImpl::createInotifyWatcher(const fim::FimWatcherSubject subject, const 
             eraseEventProcessfd(eventProcessfds, processfd);
         }
     });
+    */
     //std::thread cleanupThread(std::move(cleanup));
     //cleanupThread.detach();
 
