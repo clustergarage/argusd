@@ -193,5 +193,5 @@ target_link_libraries(fimd
 )
 
 # strip unnecessary symbols
-#add_custom_command(TARGET fimd POST_BUILD
-#  COMMAND strip -s $<TARGET_FILE:fimd>)
+add_custom_command(TARGET fimd POST_BUILD
+  COMMAND strip -s $<TARGET_FILE:fimd>)

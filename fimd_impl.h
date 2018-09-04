@@ -2,6 +2,7 @@
 #define _FIMDIMPL_H
 
 #include <mqueue.h>
+#include <future>
 #include <vector>
 
 #include "fimd_util.h"

@@ -248,8 +248,8 @@ void watch_subtree(const int pid, struct fimwatch *watch) {
 
     ipid = pid;
     ipathc = 0;
-	iwatch = malloc(sizeof(struct fimwatch));
-	*iwatch = *watch;
+    iwatch = malloc(sizeof(struct fimwatch));
+    *iwatch = *watch;
 
     for (i = 0; i < pathc; ++i) {
         if (watch->recursive) {
@@ -263,12 +263,12 @@ void watch_subtree(const int pid, struct fimwatch *watch) {
 #endif
     }
 
-	// deep copy watch object
-	watch->pathc = ipathc;
+    // deep copy watch object
+    watch->pathc = ipathc;
     watch->paths = calloc(watch->pathc, sizeof(char *));
-	for (i = 0; i < watch->pathc; ++i) {
-		watch->wd[i] = iwatch->wd[i];
-		watch->paths[i] = strdup(iwatch->paths[i]);
+    for (i = 0; i < watch->pathc; ++i) {
+        watch->wd[i] = iwatch->wd[i];
+        watch->paths[i] = strdup(iwatch->paths[i]);
     }
 
     printf("  $$$$ add watch to cache:\n");
@@ -290,16 +290,16 @@ void watch_subtree(const int pid, struct fimwatch *watch) {
     // cache information about the watch
     add_watch_to_cache(pid, watch);
 
-	// free iwatch memory
+    // free iwatch memory
     for (i = 0; i < ipathc; ++i) {
         free(iwatch->paths[i]);
     }
-	free(iwatch);
-	// free paths memory
+    free(iwatch);
+    // free paths memory
     for (i = 0; i < pathc; ++i) {
         free(paths[i]);
     }
-	free(paths);
+    free(paths);
 }
 
 /**

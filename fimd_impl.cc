@@ -3,6 +3,7 @@
 #include <poll.h>
 #include <sys/eventfd.h>
 #include <sys/inotify.h>
+#include <functional>
 #include <future>
 #include <memory>
 #include <regex>
@@ -24,7 +25,7 @@ namespace fimd {
 std::string FimdImpl::DEFAULT_FORMAT = "{event} {ftype} '{path}{sep}{file}' ({pod}:{node})";
 
 grpc::Status FimdImpl::CreateWatch(grpc::ServerContext *context, const fim::FimdConfig *request, fim::FimdHandle *response) {
-	LOG(INFO) << "CreateWatch";
+    LOG(INFO) << "CreateWatch";
     auto pids = getPidsFromRequest(request);
     if (!pids.size()) {
         LOG(INFO) << "grpc::Status::CANCELLED";
@@ -73,7 +74,7 @@ grpc::Status FimdImpl::CreateWatch(grpc::ServerContext *context, const fim::Fimd
 }
 
 grpc::Status FimdImpl::DestroyWatch(grpc::ServerContext *context, const fim::FimdConfig *request, fim::Empty *response) {
-	LOG(INFO) << "DestroyWatch";
+    LOG(INFO) << "DestroyWatch";
     auto pids = getPidsFromRequest(request);
     if (!pids.size()) {
         LOG(INFO) << "grpc::Status::CANCELLED";
@@ -166,41 +167,25 @@ void FimdImpl::createInotifyWatcher(const fim::FimWatcherSubject subject, const 
     eventProcessfds->Add(processfd);
 
     std::packaged_task<int(int, int, char **, uint32_t, bool, int, mqd_t)> task(start_inotify_watcher);
-    std::future<int> result = task.get_future();
+    std::shared_future<int> result(task.get_future());
     std::thread taskThread(std::move(task), pid, subject.path_size(), static_cast<char **>(patharr),
         static_cast<uint32_t>(event_mask), subject.recursive(), processfd, mq_);
     // start as daemon process
     taskThread.detach();
 
-    std::future_status status = result.wait_for(std::chrono::milliseconds(100));
-    if (status == std::future_status::ready &&
-        result.get() != EXIT_SUCCESS) {
-        eraseEventProcessfd(eventProcessfds, processfd);
-    }
-
-    /*
-    std::packaged_task<void(void)> cleanup([&] {
+    // @TODO: document this
+    std::thread cleanupThread([&](std::shared_future<int> res) {
         std::future_status status;
         do {
-            status = result.wait_for(std::chrono::seconds(1));
-            if (status == std::future_status::deferred) {
-                LOG(INFO) << "deferred";
-            } else if (status == std::future_status::timeout) {
-                LOG(INFO) << "timeout";
-            } else if (status == std::future_status::ready) {
-                LOG(INFO) << "ready!";
-            }
+            status = res.wait_for(std::chrono::seconds(1));
         } while (status != std::future_status::ready);
 
-        if (//status == std::future_status::ready &&
-            result.valid() &&
-            result.get() != EXIT_SUCCESS) {
+        if (res.valid() &&
+            res.get() != EXIT_SUCCESS) {
             eraseEventProcessfd(eventProcessfds, processfd);
         }
-    });
-    */
-    //std::thread cleanupThread(std::move(cleanup));
-    //cleanupThread.detach();
+    }, result);
+    cleanupThread.detach();
 
     LOG(INFO) << " DONE ";
 }
