@@ -133,7 +133,7 @@ void remove_root_path(const int pid, const char *path) {
 
     if (ignrootpathc[pid] == rootpathc[pid]) {
 #if DEBUG
-        printf("no more root paths left to monitor; bye!\n");
+        printf("no more root paths left to monitor\n");
         fflush(stdout);
 #endif
     }
@@ -197,14 +197,13 @@ int watch_path(const char *path) {
         }
     }
 
+#if DEBUG
     if (find_watch(ipid, wd) > -1) {
         // this watch descriptor is already in the cache
-#if DEBUG
         printf("wd: %d already in cache (%s)\n", wd, path);
         fflush(stdout);
-#endif
-        //return 0;
     }
+#endif
 
     iwatch->wd[ipathc] = wd;
     iwatch->paths = realloc(iwatch->paths, (ipathc + 1) * sizeof(char *));
@@ -290,22 +289,6 @@ void watch_subtree(const int pid, struct fimwatch *watch) {
         watch->wd[i] = iwatch->wd[i];
         watch->paths[i] = strdup(iwatch->paths[i]);
     }
-
-    printf("  $$$$ add watch to cache:\n");
-    printf("    $$   fd = %d\n", watch->fd);
-    printf("    $$   pathc = %d\n", watch->pathc);
-    fflush(stdout);
-    for (i = 0; i < watch->pathc; ++i) {
-        printf("     $     iwd[%d] = %d\n", i, watch->wd[i]);
-        fflush(stdout);
-    }
-    for (i = 0; i < watch->pathc; ++i) {
-        printf("     $     ipaths[%d] = %s\n", i, watch->paths[i]);
-        fflush(stdout);
-    }
-    printf("    $$   event_mask = %d\n", watch->event_mask);
-    printf("    $$   recursive = %d\n", watch->recursive);
-    fflush(stdout);
 
     // cache information about the watch
     add_watch_to_cache(pid, watch);

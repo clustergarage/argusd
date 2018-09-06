@@ -7,7 +7,7 @@ char **rootpaths[WATCH_MAX]; // list of path names supplied
 int rootpathc[WATCH_MAX];    // number of path names supplied
 int rootmask[WATCH_MAX];
 bool rootrecursive[WATCH_MAX];
-struct fimwatch *iwatch;     // @TODO
+struct fimwatch *iwatch;
 int ipid;                    // pid of container
 int ifd;
 

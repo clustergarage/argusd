@@ -25,10 +25,8 @@ namespace fimd {
 std::string FimdImpl::DEFAULT_FORMAT = "{event} {ftype} '{path}{sep}{file}' ({pod}:{node})";
 
 grpc::Status FimdImpl::CreateWatch(grpc::ServerContext *context, const fim::FimdConfig *request, fim::FimdHandle *response) {
-    LOG(INFO) << "CreateWatch";
     auto pids = getPidsFromRequest(request);
     if (!pids.size()) {
-        LOG(INFO) << "grpc::Status::CANCELLED";
         return grpc::Status::CANCELLED;
     }
 
@@ -69,15 +67,12 @@ grpc::Status FimdImpl::CreateWatch(grpc::ServerContext *context, const fim::Fimd
         });
     }
 
-    LOG(INFO) << "[CreateWatch] grpc::Status::OK";
     return grpc::Status::OK;
 }
 
 grpc::Status FimdImpl::DestroyWatch(grpc::ServerContext *context, const fim::FimdConfig *request, fim::Empty *response) {
-    LOG(INFO) << "DestroyWatch";
     auto pids = getPidsFromRequest(request);
     if (!pids.size()) {
-        LOG(INFO) << "grpc::Status::CANCELLED";
         return grpc::Status::CANCELLED;
     }
 
@@ -92,7 +87,6 @@ grpc::Status FimdImpl::DestroyWatch(grpc::ServerContext *context, const fim::Fim
     }
     watchers_.erase(remove(watchers_.begin(), watchers_.end(), watcher), watchers_.end());
 
-    LOG(INFO) << "[DestroyWatch] grpc::Status::OK";
     return grpc::Status::OK;
 }
 
@@ -186,8 +180,6 @@ void FimdImpl::createInotifyWatcher(const fim::FimWatcherSubject subject, const 
         }
     }, result);
     cleanupThread.detach();
-
-    LOG(INFO) << " DONE ";
 }
 
 mqd_t FimdImpl::createMessageQueue(const std::string logFormat, const std::string nodeName, const std::string podName, bool recreate) {
@@ -199,7 +191,6 @@ mqd_t FimdImpl::createMessageQueue(const std::string logFormat, const std::strin
     attr.mq_curmsgs = 0;
 
     if (recreate) {
-        LOG(INFO) << "recreate :: mq_close | mq_unlink";
         mq_close(mq_);
         mq_unlink(MQ_QUEUE_NAME);
     }

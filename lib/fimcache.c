@@ -105,12 +105,11 @@ int find_watch_checked(const int pid, const int wd) {
  */
 void mark_cache_slot_empty(const int pid, const int slot) {
     int i;
-    /*
 #if DEBUG
     printf("        mark_cache_slot_empty: pid = %d; slot = %d\n", pid, slot);
     fflush(stdout);
 #endif
-    */
+
     for (i = 0; i < wlcache[pid][slot].pathc; ++i) {
         wlcache[pid][slot].wd[i] = -1;
         wlcache[pid][slot].paths[i] = '\0';
