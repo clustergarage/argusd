@@ -118,19 +118,18 @@ static size_t process_next_inotify_event(const int pid, int *fd, char *ptr, int 
             // see the discussion of "intra-tree" `rename` events
             slot = find_watch_checked(pid, event->wd);
             if (slot == -1) {
-                // create new fimwatch placeholder struct, to be filled later
-                //struct fimwatch watch = {
-                //    .fd = EOF,
-                //    .pathc = rootpathc[pid],
-                //    .paths = rootpaths[pid],
-                //    .event_mask = imask,
-                //    .recursive = irecursive
-                //};
-                //*fd = reinitialize(pid, &watch);
-                // cache reached an inconsistent state
-                printf(" @@@ IN_IGNORED :: reinitialize @@@\n");
+                printf(" @@@ IN_IGNORED :: reinitialize; wd = %d @@@\n", event->wd);
                 fflush(stdout);
-                *fd = reinitialize(pid, &wlcache[pid][slot]);
+                // create new fimwatch placeholder struct, to be filled later
+                struct fimwatch watch = {
+                    .fd = EOF,
+                    .pathc = rootpathc[pid],
+                    .paths = rootpaths[pid],
+                    .event_mask = rootmask[pid],
+                    .recursive = rootrecursive[pid]
+                };
+                // cache reached an inconsistent state
+                *fd = reinitialize(pid, &watch);
                 // discard all remaining events in current `read` buffer
                 return INOTIFY_READ_BUF_LEN;
             }
@@ -180,9 +179,6 @@ static size_t process_next_inotify_event(const int pid, int *fd, char *ptr, int 
                 wdslot > -1 &&
                 // only do this if watching recursively
                 wlcache[pid][slot].recursive) {
-                printf(" @@@ directory creation :: watch_subtree @@@\n");
-                fflush(stdout);
-                // @TODO: FIXME
                 watch_subtree(pid, &wlcache[pid][slot]);
             }
         }
@@ -279,42 +275,47 @@ static size_t process_next_inotify_event(const int pid, int *fd, char *ptr, int 
         // compromise that catches the vast majority of intra-tree renames and
         // triggers relatively few cache rebuilds
 
-        const struct inotify_event *nextevt = (const struct inotify_event *)(ptr + evtlen);
+        const struct inotify_event *nextevent = (const struct inotify_event *)(ptr + evtlen);
 
-        if (((char *)nextevt < ptr + len) &&
-            (nextevt->mask & IN_MOVED_TO) &&
-            (nextevt->cookie == event->cookie)) {
+        if (((char *)nextevent < ptr + len) &&
+            (nextevent->mask & IN_MOVED_TO) &&
+            (nextevent->cookie == event->cookie)) {
             // we have a `rename` event
             // we need to fix up the cached pathnames for the corresponding
             // directory and all of its subdirectories
-            slot = find_watch_checked(pid, nextevt->wd);
-            if (slot == -1) {
+            int nextslot = find_watch_checked(pid, nextevent->wd);
+            printf(" @@@ IN_MOVED_TO :: slot = %d; nextslot = %d @@@\n", slot, nextslot);
+            fflush(stdout);
+            if (nextslot == -1) {
+                printf(" @@@ IN_MOVED_TO :: reinitialize @@@\n");
+                fflush(stdout);
                 // @FIXME: not sure this is right...
                 struct fimwatch watch = {
                     .fd = EOF,
-                    //.event_mask = imask,
-                    //.recursive = irecursive
+                    .pathc = rootpathc[pid],
+                    .paths = rootpaths[pid],
+                    .event_mask = rootmask[pid],
+                    .recursive = rootrecursive[pid]
                 };
                 // cache reached an inconsistent state
-                printf(" @@@ IN_MOVED_TO :: reinitialize @@@\n");
-                fflush(stdout);
                 *fd = reinitialize(pid, &watch);
                 // discard all remaining events in current `read` buffer
                 return INOTIFY_READ_BUF_LEN;
             }
 
-            rewrite_cached_paths(pid, path, event->name, path, nextevt->name);
+            rewrite_cached_paths(pid, path, event->name,
+                wd_to_path_name(pid, nextevent->wd), nextevent->name);
 
             // also processed the next (IN_MOVED_TO) event, so skip over it
-            evtlen += sizeof(struct inotify_event) + nextevt->len;
-        } else if (((char *)nextevt < ptr + len) || !first) {
+            evtlen += sizeof(struct inotify_event) + nextevent->len;
+        } else if (((char *)nextevent < ptr + len) || !first) {
             // got a "moved from" event without an accompanying "moved to" event
             // the directory has been moved outside the tree we are monitoring
             // need to remove the watches and remove the cache entries for the
             // moved directory and all of its subdirectories
 #if DEBUG
             printf("moved out: %p %p\n", path, event->name);
-            printf("first = %d; remaining bytes = %ld\n", first, ptr + len - (char *)nextevt);
+            printf("first = %d; remaining bytes = %ld\n", first, ptr + len - (char *)nextevent);
             fflush(stdout);
 #endif
             snprintf(fullpath, sizeof(fullpath), "%s/%s", path, event->name);
@@ -398,9 +399,9 @@ static size_t process_next_inotify_event(const int pid, int *fd, char *ptr, int 
     }
 
     slot = find_watch_checked(pid, event->wd);
-    if (slot == -1/* ||
+    if (slot == -1 ||
         // only continue with the events we care about
-        !(event->mask & imask)*/) {
+        !(event->mask & rootmask[pid])) {
         // discard all remaining events in current `read` buffer
         return INOTIFY_READ_BUF_LEN;
     }
@@ -541,6 +542,8 @@ int start_inotify_watcher(const int pid, int pathc, char *paths[], uint32_t mask
 
     // save a copy of the paths
     copy_root_paths(pid, pathc, &paths[0]);
+    rootmask[pid] = mask;
+    rootrecursive[pid] = recursive;
 
 #if DEBUG
     printf("  Listening for events (pid = %d)\n", pid);

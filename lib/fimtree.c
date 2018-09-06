@@ -203,11 +203,16 @@ int watch_path(const char *path) {
         printf("wd: %d already in cache (%s)\n", wd, path);
         fflush(stdout);
 #endif
-        return 0;
+        //return 0;
     }
 
     iwatch->wd[ipathc] = wd;
     iwatch->paths = realloc(iwatch->paths, (ipathc + 1) * sizeof(char *));
+#if DEBUG
+    if (iwatch->paths == NULL) {
+        perror("realloc");
+    }
+#endif
     iwatch->paths[ipathc] = strdup(path);
     ++ipathc;
 
@@ -242,6 +247,11 @@ void watch_subtree(const int pid, struct fimwatch *watch) {
     int i;
     int pathc = rootpathc[pid];
     char **paths = calloc(pathc, sizeof(char *));
+#if DEBUG
+    if (paths == NULL) {
+        perror("calloc");
+    }
+#endif
     for (i = 0; i < pathc; ++i) {
         paths[i] = strdup(rootpaths[pid][i]);
     }
@@ -249,6 +259,11 @@ void watch_subtree(const int pid, struct fimwatch *watch) {
     ipid = pid;
     ipathc = 0;
     iwatch = malloc(sizeof(struct fimwatch));
+#if DEBUG
+    if (iwatch == NULL) {
+        perror("malloc");
+    }
+#endif
     *iwatch = *watch;
 
     for (i = 0; i < pathc; ++i) {
@@ -266,6 +281,11 @@ void watch_subtree(const int pid, struct fimwatch *watch) {
     // deep copy watch object
     watch->pathc = ipathc;
     watch->paths = calloc(watch->pathc, sizeof(char *));
+#if DEBUG
+    if (watch->paths == NULL) {
+        perror("calloc");
+    }
+#endif
     for (i = 0; i < watch->pathc; ++i) {
         watch->wd[i] = iwatch->wd[i];
         watch->paths[i] = strdup(iwatch->paths[i]);
@@ -328,7 +348,7 @@ void rewrite_cached_paths(const int pid, const char *oldpathpf, const char *oldn
                 (wlcache[pid][i].paths[j][len] == '/' ||
                 wlcache[pid][i].paths[j][len] == '\0')) {
                 snprintf(newpath, sizeof(newpath), "%s%s", newpf, &wlcache[pid][i].paths[j][len]);
-                strncpy(wlcache[pid][i].paths[j], newpath, PATH_MAX);
+                wlcache[pid][i].paths[j] = strdup(newpath);
 #if DEBUG
                 printf("    wd %d [cache slot %d] ==> %s\n", wlcache[pid][i].wd[j], i, newpath);
                 fflush(stdout);
