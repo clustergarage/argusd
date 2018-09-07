@@ -52,8 +52,7 @@ grpc::Status FimdImpl::CreateWatch(grpc::ServerContext *context, const fim::Fimd
     for_each(pids.cbegin(), pids.cend(), [&](const int pid) {
         for_each(request->subject().cbegin(), request->subject().cend(), [&](const fim::FimWatcherSubject subject) {
             // @TODO: check if any watchers are started, if not, don't add to response
-            createInotifyWatcher(subject, pid, getPathArrayFromSubject(pid, subject),
-                getEventMaskFromSubject(subject), response->mutable_processeventfd());
+            createInotifyWatcher(subject, pid, response->mutable_processeventfd());
         });
         response->add_pid(pid);
     });
@@ -151,7 +150,7 @@ uint32_t FimdImpl::getEventMaskFromSubject(const fim::FimWatcherSubject subject)
     return mask;
 }
 
-void FimdImpl::createInotifyWatcher(const fim::FimWatcherSubject subject, const int pid, char **patharr, uint32_t event_mask,
+void FimdImpl::createInotifyWatcher(const fim::FimWatcherSubject subject, const int pid,
     google::protobuf::RepeatedField<google::protobuf::int32> *eventProcessfds) {
     // create anonymous pipe to communicate with inotify watcher
     int processfd = eventfd(0, EFD_CLOEXEC);
@@ -160,10 +159,12 @@ void FimdImpl::createInotifyWatcher(const fim::FimWatcherSubject subject, const 
     }
     eventProcessfds->Add(processfd);
 
-    std::packaged_task<int(int, int, char **, uint32_t, bool, int, mqd_t)> task(start_inotify_watcher);
+    std::packaged_task<int(int, int, char **, uint32_t, bool, bool, int, mqd_t)> task(start_inotify_watcher);
     std::shared_future<int> result(task.get_future());
-    std::thread taskThread(std::move(task), pid, subject.path_size(), static_cast<char **>(patharr),
-        static_cast<uint32_t>(event_mask), subject.recursive(), processfd, mq_);
+    std::thread taskThread(std::move(task), pid, subject.path_size(),
+        getPathArrayFromSubject(pid, subject),
+        getEventMaskFromSubject(subject),
+        subject.onlydir(), subject.recursive(), processfd, mq_);
     // start as daemon process
     taskThread.detach();
 

@@ -87,7 +87,7 @@ static int reinitialize(const int pid, struct fimwatch *watch) {
     // check cache consistency right away, in case there are multiple
     // containers in a single pod that don't have a path on the
     // filesystem that we specified to watch
-    check_cache_consistency(pid);
+    check_cache_consistency(pid, watch->only_dir);
 
     return fd;
 }
@@ -124,6 +124,7 @@ static size_t process_next_inotify_event(const int pid, int *fd, char *ptr, int 
                     .pathc = rootpathc[pid],
                     .paths = rootpaths[pid],
                     .event_mask = rootmask[pid],
+                    .only_dir = rootonlydir[pid],
                     .recursive = rootrecursive[pid]
                 };
                 // cache reached an inconsistent state
@@ -288,6 +289,7 @@ static size_t process_next_inotify_event(const int pid, int *fd, char *ptr, int 
                     .pathc = rootpathc[pid],
                     .paths = rootpaths[pid],
                     .event_mask = rootmask[pid],
+                    .only_dir = rootonlydir[pid],
                     .recursive = rootrecursive[pid]
                 };
                 // cache reached an inconsistent state
@@ -414,7 +416,7 @@ sendevent: ; // hack to get past label syntax error
 #endif
     }
 
-    check_cache_consistency(pid);
+    check_cache_consistency(pid, rootonlydir[pid]);
 
     return evtlen;
 }
@@ -517,7 +519,7 @@ static void process_inotify_events(const int pid, int *fd) {
     }
 }
 
-int start_inotify_watcher(const int pid, int pathc, char *paths[], uint32_t mask, bool recursive, int processevtfd, mqd_t mq) {
+int start_inotify_watcher(const int pid, int pathc, char *paths[], uint32_t mask, bool only_dir, bool recursive, int processevtfd, mqd_t mq) {
     int fd, pollc;
     nfds_t nfds;
     struct pollfd fds[2];
@@ -526,8 +528,9 @@ int start_inotify_watcher(const int pid, int pathc, char *paths[], uint32_t mask
     sigaddset(&sigmask, SIGCHLD);
 
     // save a copy of the paths
-    copy_root_paths(pid, pathc, &paths[0]);
+    copy_root_paths(pid, pathc, &paths[0], only_dir);
     rootmask[pid] = mask;
+    rootonlydir[pid] = only_dir;
     rootrecursive[pid] = recursive;
 
 #if DEBUG
@@ -540,6 +543,7 @@ int start_inotify_watcher(const int pid, int pathc, char *paths[], uint32_t mask
         .fd = EOF,
         .pathc = pathc,
         .event_mask = mask,
+        .only_dir = only_dir,
         .recursive = recursive
     };
 

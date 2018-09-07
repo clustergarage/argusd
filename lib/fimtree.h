@@ -3,19 +3,18 @@
 
 #include "fimutil.h"
 
-char **rootpaths[WATCH_MAX]; // list of path names supplied
-int rootpathc[WATCH_MAX];    // number of path names supplied
+char **rootpaths[WATCH_MAX];      // list of path names supplied
+int rootpathc[WATCH_MAX];         // number of path names supplied
+struct stat *rootstat[WATCH_MAX]; // `stat` structures for root directories
 int rootmask[WATCH_MAX];
+bool rootonlydir[WATCH_MAX];
 bool rootrecursive[WATCH_MAX];
+// temporary
 struct fimwatch *iwatch;
-int ipid;                    // pid of container
-int ifd;
+int ipid, ipathc;
+int ignrootpathc[WATCH_MAX];      // number of path names that we've ceased to monitor
 
-static struct stat *rootstat[WATCH_MAX]; // `stat` structures for root directories
-static int ipathc;
-static int ignrootpathc[WATCH_MAX];      // number of path names that we've ceased to monitor
-
-void copy_root_paths(const int pid, int pathc, char *paths[]);
+void copy_root_paths(const int pid, int pathc, char *paths[], bool only_dir);
 char **find_root_path(const int pid, const char *path);
 void remove_root_path(const int pid, const char *path);
 int traverse_tree(const char *path, const struct stat *sb, int tflag, struct FTW *ftwbuf);

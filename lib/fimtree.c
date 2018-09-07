@@ -17,7 +17,7 @@
  * duplicate the path names supplied on the command line, perform some sanity
  * checking along the way
  */
-void copy_root_paths(const int pid, int pathc, char *paths[]) {
+void copy_root_paths(const int pid, int pathc, char *paths[], bool only_dir) {
     int i, j;
     struct stat sb;
 
@@ -32,14 +32,13 @@ void copy_root_paths(const int pid, int pathc, char *paths[]) {
             continue;
         }
 
-#if ONLY_DIR
-        if (!S_ISDIR(sb.st_mode)) {
+        if (only_dir &&
+            !S_ISDIR(sb.st_mode)) {
 #if DEBUG
             fprintf(stderr, "'%s' is not a directory\n", paths[i]);
 #endif
             continue;
         }
-#endif
     }
 
     // create a copy of the root directory path names
@@ -146,12 +145,11 @@ void remove_root_path(const int pid, const char *path) {
  * that the tree traversal should continue
  */
 int traverse_tree(const char *path, const struct stat *sb, int tflag, struct FTW *ftwbuf) {
-#if ONLY_DIR
-    if (!S_ISDIR(sb->st_mode)) {
+    if (iwatch->only_dir &&
+        !S_ISDIR(sb->st_mode)) {
         // ignore nondirectory files
         return 0;
     }
-#endif
 #if DEBUG
         printf("    traverse_tree: %s\n", path);
         fflush(stdout);
@@ -168,10 +166,10 @@ int watch_path(const char *path) {
     int wd, slot, flags;
     // we need to watch certain events at all times for keeping a consistent
     // view of the filesystem tree
-#if ONLY_DIR
-    flags |= IN_ONLYDIR;
-#endif
     flags |= IN_CREATE | IN_MOVED_FROM | IN_MOVED_TO | IN_DELETE_SELF;
+    if (iwatch->only_dir) {
+        flags |= IN_ONLYDIR;
+    }
 
     // @TODO: follow symlinks properly
     if (find_root_path(ipid, path) != NULL) {
@@ -298,6 +296,7 @@ void watch_subtree(const int pid, struct fimwatch *watch) {
         free(iwatch->paths[i]);
     }
     free(iwatch);
+
     // free paths memory
     for (i = 0; i < pathc; ++i) {
         free(paths[i]);

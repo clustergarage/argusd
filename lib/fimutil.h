@@ -5,10 +5,7 @@
 #include <stdint.h>
 
 #ifndef DEBUG
-#define DEBUG 0
-#endif
-#ifndef ONLY_DIR
-#define ONLY_DIR 0
+#define DEBUG 1
 #endif
 
 // @TODO: change this to dynamic allocation?
@@ -20,6 +17,7 @@ struct fimwatch {
     int pathc;           // cached path count
     char **paths;        // cached path name(s)
     uint32_t event_mask;
+    bool only_dir;
     bool recursive;
 };
 

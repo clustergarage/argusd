@@ -5,11 +5,10 @@
 
 #include "fimutil.h"
 
-// @TODO: !!!!!!!!!!!!!!!!!!!1
-// change all pid lookups to a pid->pid slot [lay out memory contiguously]
+// @TODO: change all pid lookups to a pid->pid slot [contiguous]
 
 void free_cache(const int pid);
-void check_cache_consistency(const int pid);
+void check_cache_consistency(const int pid, bool only_dir);
 void remove_item_from_cache(struct fimwatch *watch, const int index);
 int find_watch(const int pid, const int wd);
 int find_watch_checked(const int pid, const int wd);

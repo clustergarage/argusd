@@ -25,7 +25,7 @@ void free_cache(const int pid) {
 /**
  * check that all path names in the cache are valid and refer to directories
  */
-void check_cache_consistency(const int pid) {
+void check_cache_consistency(const int pid, bool only_dir) {
     struct stat sb;
     int i, j;
 
@@ -45,14 +45,14 @@ void check_cache_consistency(const int pid) {
                 continue;
             }
 
-#if ONLY_DIR
-            if (!S_ISDIR(sb.st_mode)) {
+            if (only_dir &&
+                !S_ISDIR(sb.st_mode)) {
 #if DEBUG
                 fprintf(stderr, "check_cache_consistency: %s is not a directory\n", wlcache[pid][i].paths[j]);
 #endif
+                remove_item_from_cache(&wlcache[pid][i], j);
                 continue;
             }
-#endif
         }
     }
 }
@@ -105,17 +105,13 @@ int find_watch_checked(const int pid, const int wd) {
  */
 void mark_cache_slot_empty(const int pid, const int slot) {
     int i;
-#if DEBUG
-    printf("        mark_cache_slot_empty: pid = %d; slot = %d\n", pid, slot);
-    fflush(stdout);
-#endif
-
     for (i = 0; i < wlcache[pid][slot].pathc; ++i) {
         wlcache[pid][slot].wd[i] = -1;
         wlcache[pid][slot].paths[i] = '\0';
     }
     wlcache[pid][slot].pathc = -1;
     wlcache[pid][slot].event_mask = -1;
+    wlcache[pid][slot].only_dir = false;
     wlcache[pid][slot].recursive = false;
 }
 
