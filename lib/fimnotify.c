@@ -406,8 +406,7 @@ sendevent: ; // hack to get past label syntax error
 #endif
     }
 
-    // @FIXME
-    //check_cache_consistency(watch);
+    check_cache_consistency(watch);
 
     return evtlen;
 }

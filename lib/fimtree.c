@@ -122,9 +122,7 @@ void remove_root_path(struct fimwatch *watch, const char *path) {
     }
     *p = NULL;
 
-    // @FIXME
     ++watch->ignored_rootpathc;
-
     if (watch->ignored_rootpathc == watch->rootpathc) {
 #if DEBUG
         printf("no more root paths left to monitor\n");
@@ -134,45 +132,26 @@ void remove_root_path(struct fimwatch *watch, const char *path) {
 }
 
 /**
- * function called by `nftw` to traverse a directory tree that adds a watch
- * for each directory in the tree
- * each successful call to this function should return 0 to indicate to `nftw`
- * that the tree traversal should continue
- */
-int traverse_tree(const char *path, const struct stat *sb, int tflag, struct FTW *ftwbuf) {
-    if (iwatch->only_dir &&
-        !S_ISDIR(sb->st_mode)) {
-        // ignore nondirectory files
-        return 0;
-    }
-#if DEBUG
-        printf("    traverse_tree: %s\n", path);
-        fflush(stdout);
-#endif
-    return watch_path(path);
-}
-
-/**
  * add `path` to the watch list of the inotify file descriptor `ifd`
  * the process is not recursive
  * returns number of watches/cache entries added for this subtree
  */
-int watch_path(const char *path) {
+int watch_path(struct fimwatch *watch, const char *path) {
     int wd, slot, flags;
     // we need to watch certain events at all times for keeping a consistent
     // view of the filesystem tree
     flags |= IN_CREATE | IN_MOVED_FROM | IN_MOVED_TO | IN_DELETE_SELF;
-    if (iwatch->only_dir) {
+    if (watch->only_dir) {
         flags |= IN_ONLYDIR;
     }
 
     // @TODO: follow symlinks properly
-    if (find_root_path(iwatch, path) != NULL) {
+    if (find_root_path(watch, path) != NULL) {
         flags |= IN_MOVE_SELF;
     }
 
     // make directories for events
-    wd = inotify_add_watch(iwatch->fd, path, iwatch->event_mask | flags);
+    wd = inotify_add_watch(watch->fd, path, watch->event_mask | flags);
     if (wd == EOF) {
         // by the time we come to create a watch, the directory might already
         // have been deleted or renamed, in which case we'll get an ENOENT
@@ -191,22 +170,22 @@ int watch_path(const char *path) {
     }
 
 #if DEBUG
-    if (find_watch(iwatch, wd) > -1) {
+    if (find_watch(watch, wd) > -1) {
         // this watch descriptor is already in the cache
         printf("wd: %d already in cache (%s)\n", wd, path);
         fflush(stdout);
     }
 #endif
 
-    iwatch->wd[ipathc] = wd;
-    iwatch->paths = realloc(iwatch->paths, (ipathc + 1) * sizeof(char *));
+    watch->wd[watch->pathc] = wd;
+    watch->paths = realloc(watch->paths, (watch->pathc + 1) * sizeof(char *));
 #if DEBUG
-    if (iwatch->paths == NULL) {
+    if (watch->paths == NULL) {
         perror("realloc");
     }
 #endif
-    iwatch->paths[ipathc] = strdup(path);
-    ++ipathc;
+    watch->paths[watch->pathc] = strdup(path);
+    ++watch->pathc;
 
     return 0;
 }
@@ -217,7 +196,26 @@ int watch_path(const char *path) {
  * subdirectories of `path`
  * returns number of watches/cache entries added for this subtree
  */
-int watch_path_recursive(const char *path) {
+int watch_path_recursive(struct fimwatch *watch, const char *path) {
+    /**
+     * function called by `nftw` to traverse a directory tree that adds a watch
+     * for each directory in the tree
+     * each successful call to this function should return 0 to indicate to `nftw`
+     * that the tree traversal should continue
+     */
+    int traverse_tree(const char *path, const struct stat *sb, int tflag, struct FTW *ftwbuf) {
+        if (watch->only_dir &&
+            !S_ISDIR(sb->st_mode)) {
+            // ignore nondirectory files
+            return 0;
+        }
+#if DEBUG
+            printf("    traverse_tree: %s\n", path);
+            fflush(stdout);
+#endif
+        return watch_path(watch, path);
+    }
+
     // use FTW_PHYS to avoid following soft links to directories (which could
     // lead us in circles)
     // by the time we come to process `path`, it may already have been deleted,
@@ -228,7 +226,7 @@ int watch_path_recursive(const char *path) {
         fflush(stdout);
 #endif
     }
-    return ipathc;
+    return watch->pathc;
 }
 
 /**
@@ -237,49 +235,20 @@ int watch_path_recursive(const char *path) {
  */
 void watch_subtree(struct fimwatch *watch) {
     int i;
-    ipathc = 0;
-
-    iwatch = malloc(sizeof(struct fimwatch));
-#if DEBUG
-    if (iwatch == NULL) {
-        perror("malloc");
-    }
-#endif
-    *iwatch = *watch;
-
     for (i = 0; i < watch->rootpathc; ++i) {
         if (watch->recursive) {
-            watch_path_recursive(watch->rootpaths[i]);
+            watch_path_recursive(watch, watch->rootpaths[i]);
         } else {
-            watch_path(watch->rootpaths[i]);
+            watch_path(watch, watch->rootpaths[i]);
         }
 #if DEBUG
-        printf("    watch_subtree: %s: %d entries added\n", watch->rootpaths[i], ipathc);
+        printf("    watch_subtree: %s: %d entries added\n", watch->rootpaths[i], watch->pathc);
         fflush(stdout);
 #endif
     }
 
-    // deep copy watch object
-    watch->pathc = ipathc;
-    watch->paths = calloc(watch->pathc, sizeof(char *));
-#if DEBUG
-    if (watch->paths == NULL) {
-        perror("calloc");
-    }
-#endif
-    for (i = 0; i < watch->pathc; ++i) {
-        watch->wd[i] = iwatch->wd[i];
-        watch->paths[i] = strdup(iwatch->paths[i]);
-    }
-
     // cache information about the watch
     add_watch_to_cache(watch);
-
-    // free iwatch memory
-    for (i = 0; i < ipathc; ++i) {
-        free(iwatch->paths[i]);
-    }
-    free(iwatch);
 }
 
 /**
