@@ -17,9 +17,10 @@ struct fimwatch_event {
     bool is_dir;
 };
 
-static int reinitialize(const int pid, struct fimwatch *watch);
-static size_t process_next_inotify_event(const int pid, int *fd, char *buf, int len, int first);
-static void process_inotify_events(const int pid, int *fd);
-int start_inotify_watcher(const int pid, int pathc, char *paths[], uint32_t mask, bool only_dir, bool recursive, int processevtfd, mqd_t mq);
+static int reinitialize(struct fimwatch *watch);
+static size_t process_next_inotify_event(struct fimwatch *watch, char *buf, int len, int first);
+static void process_inotify_events(struct fimwatch *watch);
+int start_inotify_watcher(const int pid, const int sid, int pathc, char *paths[], uint32_t mask,
+    bool only_dir, bool recursive, int processevtfd, mqd_t mq);
 
 #endif

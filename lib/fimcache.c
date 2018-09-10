@@ -10,47 +10,51 @@
 #include "fimcache.h"
 #include "fimutil.h"
 
-extern struct fimwatch *wlcache[WATCH_MAX];
-extern int wlcachec[WATCH_MAX];
+extern struct fimwatch *wlcache;
 
 /**
  * deallocate the watch cache
  */
-void free_cache(const int pid) {
-    free(wlcache[pid]);
-    wlcachec[pid] = 0;
-    wlcache[pid] = NULL;
+void free_cache(const struct fimwatch *watch) {
+    if (watch->slot == -1) {
+#if DEBUG
+        fprintf(stderr, "cache slot is -1\n");
+#endif
+        return;
+    }
+    free(watch->rootpaths);
+    free(watch->paths);
 }
 
 /**
  * check that all path names in the cache are valid and refer to directories
  */
-void check_cache_consistency(const int pid, bool only_dir) {
+void check_cache_consistency(const struct fimwatch *watch) {
     struct stat sb;
     int i, j;
 
-    for (i = 0; i < wlcachec[pid]; ++i) {
-        if (wlcache[pid][i].pathc == -1) {
+    for (i = 0; i < wlcachec; ++i) {
+        if (wlcache[i].pathc == -1) {
             continue;
         }
 
-        for (j = 0; j < wlcache[pid][i].pathc; ++j) {
-            if (lstat(wlcache[pid][i].paths[j], &sb) == EOF) {
+        for (j = 0; j < wlcache[i].pathc; ++j) {
+            if (lstat(wlcache[i].paths[j], &sb) == EOF) {
 #if DEBUG
                 printf("check_cache_consistency: stat: [slot = %d; wd = %d] %s: %s\n",
-                    i, wlcache[pid][i].wd[j], wlcache[pid][i].paths[j], strerror(errno));
+                    i, wlcache[i].wd[j], wlcache[i].paths[j], strerror(errno));
                 fflush(stdout);
 #endif
-                remove_item_from_cache(&wlcache[pid][i], j);
+                remove_item_from_cache(&wlcache[i], j);
                 continue;
             }
 
-            if (only_dir &&
+            if (watch->only_dir &&
                 !S_ISDIR(sb.st_mode)) {
 #if DEBUG
-                fprintf(stderr, "check_cache_consistency: %s is not a directory\n", wlcache[pid][i].paths[j]);
+                fprintf(stderr, "check_cache_consistency: %s is not a directory\n", wlcache[i].paths[j]);
 #endif
-                remove_item_from_cache(&wlcache[pid][i], j);
+                remove_item_from_cache(&wlcache[i], j);
                 continue;
             }
         }
@@ -70,11 +74,15 @@ void remove_item_from_cache(struct fimwatch *watch, int const index) {
  * check whether the cache contains the watch descriptor `wd`
  * if found, return the slot number, otherwise return -1
  */
-int find_watch(const int pid, const int wd) {
+int find_watch(const struct fimwatch *watch, const int wd) {
     int i, j;
-    for (i = 0; i < wlcachec[pid]; ++i) {
-        for (j = 0; j < wlcache[pid][i].pathc; ++j) {
-            if (wlcache[pid][i].wd[j] == wd) {
+    for (i = 0; i < wlcachec; ++i) {
+        if (wlcache[i].pid != watch->pid ||
+            wlcache[i].sid != watch->sid) {
+            continue;
+        }
+        for (j = 0; j < wlcache[i].pathc; ++j) {
+            if (wlcache[i].wd[j] == wd) {
                 return i;
             }
         }
@@ -85,8 +93,8 @@ int find_watch(const int pid, const int wd) {
 /**
  * deallocate the watch cache
  */
-int find_watch_checked(const int pid, const int wd) {
-    int slot = find_watch(pid, wd);
+int find_watch_checked(const struct fimwatch *watch, const int wd) {
+    int slot = find_watch(watch, wd);
     if (slot > -1) {
         return slot;
     }
@@ -103,66 +111,75 @@ int find_watch_checked(const int pid, const int wd) {
 /**
  * mark a cache entry as unused
  */
-void mark_cache_slot_empty(const int pid, const int slot) {
+void mark_cache_slot_empty(const int slot) {
     int i;
-    for (i = 0; i < wlcache[pid][slot].pathc; ++i) {
-        wlcache[pid][slot].wd[i] = -1;
-        wlcache[pid][slot].paths[i] = '\0';
+    wlcache[slot].pid = -1;
+    wlcache[slot].sid = -1;
+    wlcache[slot].slot = -1;
+    wlcache[slot].fd = EOF;
+    for (i = 0; i < wlcache[slot].rootpathc; ++i) {
+        wlcache[slot].rootpaths[i] = '\0';
     }
-    wlcache[pid][slot].pathc = -1;
-    wlcache[pid][slot].event_mask = -1;
-    wlcache[pid][slot].only_dir = false;
-    wlcache[pid][slot].recursive = false;
+    wlcache[slot].rootpathc = -1;
+    for (i = 0; i < wlcache[slot].pathc; ++i) {
+        wlcache[slot].wd[i] = EOF;
+        wlcache[slot].paths[i] = '\0';
+    }
+    wlcache[slot].pathc = -1;
+    wlcache[slot].event_mask = -1;
+    wlcache[slot].only_dir = false;
+    wlcache[slot].recursive = false;
 }
 
 /**
  * find a free slot in the cache
  */
-static int find_empty_cache_slot(const int pid) {
-    const int ALLOC_INC = 128;
+int find_empty_cache_slot() {
     int i, j;
-
-    for (i = 0; i < wlcachec[pid]; ++i) {
-        if (wlcache[pid][i].pathc == -1) {
+    for (i = 0; i < wlcachec; ++i) {
+        if (wlcache[i].pathc == -1) {
             return i;
         }
     }
     // no free slot found; resize cache
-    wlcachec[pid] += ALLOC_INC;
+    wlcachec += ALLOC_INC;
 
-    wlcache[pid] = realloc(wlcache[pid], wlcachec[pid] * sizeof(struct fimwatch));
+    wlcache = realloc(wlcache, wlcachec * sizeof(struct fimwatch));
 #if DEBUG
-    if (wlcache[pid] == NULL) {
+    if (wlcache == NULL) {
         perror("realloc");
     }
 #endif
 
-    for (i = wlcachec[pid] - ALLOC_INC; i < wlcachec[pid]; ++i) {
-        mark_cache_slot_empty(pid, i);
+    for (i = wlcachec - ALLOC_INC; i < wlcachec; ++i) {
+        mark_cache_slot_empty(i);
     }
-
     // return first slot in newly allocated space
-    return wlcachec[pid] - ALLOC_INC;
+    return wlcachec - ALLOC_INC;
 }
 
 /**
  * add an item to the cache
  */
-void add_watch_to_cache(const int pid, const struct fimwatch *watch) {
-    int slot = find_empty_cache_slot(pid);
-    wlcache[pid][slot] = *watch;
+void add_watch_to_cache(const struct fimwatch *watch) {
+    int slot = find_empty_cache_slot();
+    wlcache[slot] = *watch;
 }
 
 /**
  * return the cache slot that corresponds to a particular path name
  * or -1 if the path is not in the cache
  */
-int path_name_to_cache_slot(const int pid, const char *path) {
+int path_name_to_cache_slot(const struct fimwatch *watch, const char *path) {
     int i, j;
-    for (i = 0; i < wlcachec[pid]; ++i) {
-        if (wlcache[pid][i].pathc > -1) {
-            for (j = 0; j < wlcache[pid][i].pathc; ++j) {
-                if (strcmp(wlcache[pid][i].paths[j], path) == 0) {
+    for (i = 0; i < wlcachec; ++i) {
+        if (wlcache[i].pid != watch->pid ||
+            wlcache[i].sid != watch->sid) {
+            continue;
+        }
+        if (wlcache[i].pathc > -1) {
+            for (j = 0; j < wlcache[i].pathc; ++j) {
+                if (strcmp(wlcache[i].paths[j], path) == 0) {
                     return i;
                 }
             }
@@ -171,22 +188,30 @@ int path_name_to_cache_slot(const int pid, const char *path) {
     return -1;
 }
 
-char *wd_to_path_name(const int pid, const int wd) {
+char *wd_to_path_name(const struct fimwatch *watch, const int wd) {
     int i, j;
-    for (i = 0; i < wlcachec[pid]; ++i) {
-        for (j = 0; j < wlcache[pid][i].pathc; ++j) {
-            if (wlcache[pid][i].wd[j] == wd) {
-                return wlcache[pid][i].paths[j];
+    for (i = 0; i < wlcachec; ++i) {
+        if (wlcache[i].pid != watch->pid ||
+            wlcache[i].sid != watch->sid) {
+            continue;
+        }
+        for (j = 0; j < wlcache[i].pathc; ++j) {
+            if (wlcache[i].wd[j] == wd) {
+                return wlcache[i].paths[j];
             }
         }
     }
 }
 
-int wd_to_cache_slot(const int pid, const int wd) {
+int wd_to_cache_slot(const struct fimwatch *watch, const int wd) {
     int i, j;
-    for (i = 0; i < wlcachec[pid]; ++i) {
-        for (j = 0; j < wlcache[pid][i].pathc; ++j) {
-            if (wlcache[pid][i].wd[j] == wd) {
+    for (i = 0; i < wlcachec; ++i) {
+        if (wlcache[i].pid != watch->pid ||
+            wlcache[i].sid != watch->sid) {
+            continue;
+        }
+        for (j = 0; j < wlcache[i].pathc; ++j) {
+            if (wlcache[i].wd[j] == wd) {
                 return j;
             }
         }

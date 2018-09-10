@@ -3,25 +3,18 @@
 
 #include "fimutil.h"
 
-char **rootpaths[WATCH_MAX];      // list of path names supplied
-int rootpathc[WATCH_MAX];         // number of path names supplied
-struct stat *rootstat[WATCH_MAX]; // `stat` structures for root directories
-int rootmask[WATCH_MAX];
-bool rootonlydir[WATCH_MAX];
-bool rootrecursive[WATCH_MAX];
-// temporary
+// temporary variables to be used across `traverse_tree` and `nftw`
 struct fimwatch *iwatch;
-int ipid, ipathc;
-int ignrootpathc[WATCH_MAX];      // number of path names that we've ceased to monitor
+int ipathc;
 
-void copy_root_paths(const int pid, int pathc, char *paths[], bool only_dir);
-char **find_root_path(const int pid, const char *path);
-void remove_root_path(const int pid, const char *path);
+void copy_root_paths(struct fimwatch *watch);
+char **find_root_path(const struct fimwatch *watch, const char *path);
+void remove_root_path(struct fimwatch *watch, const char *path);
 int traverse_tree(const char *path, const struct stat *sb, int tflag, struct FTW *ftwbuf);
 int watch_path(const char *path);
 int watch_path_recursive(const char *path);
-void watch_subtree(const int pid, struct fimwatch *watch);
-void rewrite_cached_paths(const int pid, const char *oldpathpf, const char *oldname, const char *newpathpf, const char *newname);
-int remove_subtree(const int pid, int fd, char *path);
+void watch_subtree(struct fimwatch *watch);
+void rewrite_cached_paths(const struct fimwatch *watch, const char *oldpathpf, const char *oldname, const char *newpathpf, const char *newname);
+int remove_subtree(const struct fimwatch *watch, char *path);
 
 #endif

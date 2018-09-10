@@ -5,18 +5,22 @@
 
 #include "fimutil.h"
 
+#ifndef ALLOC_INC
+#define ALLOC_INC 128
+#endif
+
 // @TODO: change all pid lookups to a pid->pid slot [contiguous]
 
-void free_cache(const int pid);
-void check_cache_consistency(const int pid, bool only_dir);
+void free_cache(const struct fimwatch *cache);
+void check_cache_consistency(const struct fimwatch *watch);
 void remove_item_from_cache(struct fimwatch *watch, const int index);
-int find_watch(const int pid, const int wd);
-int find_watch_checked(const int pid, const int wd);
-void mark_cache_slot_empty(const int pid, const int slot);
-static int find_empty_cache_slot(const int pid);
-void add_watch_to_cache(const int pid, const struct fimwatch *watch);
-int path_name_to_cache_slot(const int pid, const char *path);
-char *wd_to_path_name(const int pid, const int wd);
-int wd_to_cache_slot(const int pid, const int wd);
+int find_watch(const struct fimwatch *watch, const int wd);
+int find_watch_checked(const struct fimwatch *watch, const int wd);
+void mark_cache_slot_empty(const int slot);
+static int find_empty_cache_slot();
+void add_watch_to_cache(const struct fimwatch *watch);
+int path_name_to_cache_slot(const struct fimwatch *watch, const char *path);
+char *wd_to_path_name(const struct fimwatch *watch, const int wd);
+int wd_to_cache_slot(const struct fimwatch *watch, const int wd);
 
 #endif

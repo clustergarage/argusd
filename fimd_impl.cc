@@ -50,9 +50,11 @@ grpc::Status FimdImpl::CreateWatch(grpc::ServerContext *context, const fim::Fimd
         request->nodename(), request->podname(), (watcher != nullptr))));
 
     for_each(pids.cbegin(), pids.cend(), [&](const int pid) {
+        int i = 0;
         for_each(request->subject().cbegin(), request->subject().cend(), [&](const fim::FimWatcherSubject subject) {
             // @TODO: check if any watchers are started, if not, don't add to response
-            createInotifyWatcher(subject, pid, response->mutable_processeventfd());
+            createInotifyWatcher(subject, pid, i, response->mutable_processeventfd());
+            ++i;
         });
         response->add_pid(pid);
     });
@@ -150,7 +152,7 @@ uint32_t FimdImpl::getEventMaskFromSubject(const fim::FimWatcherSubject subject)
     return mask;
 }
 
-void FimdImpl::createInotifyWatcher(const fim::FimWatcherSubject subject, const int pid,
+void FimdImpl::createInotifyWatcher(const fim::FimWatcherSubject subject, const int pid, const int sid,
     google::protobuf::RepeatedField<google::protobuf::int32> *eventProcessfds) {
     // create anonymous pipe to communicate with inotify watcher
     int processfd = eventfd(0, EFD_CLOEXEC);
@@ -159,9 +161,9 @@ void FimdImpl::createInotifyWatcher(const fim::FimWatcherSubject subject, const 
     }
     eventProcessfds->Add(processfd);
 
-    std::packaged_task<int(int, int, char **, uint32_t, bool, bool, int, mqd_t)> task(start_inotify_watcher);
+    std::packaged_task<int(int, int, int, char **, uint32_t, bool, bool, int, mqd_t)> task(start_inotify_watcher);
     std::shared_future<int> result(task.get_future());
-    std::thread taskThread(std::move(task), pid, subject.path_size(),
+    std::thread taskThread(std::move(task), pid, sid, subject.path_size(),
         getPathArrayFromSubject(pid, subject),
         getEventMaskFromSubject(subject),
         subject.onlydir(), subject.recursive(), processfd, mq_);
