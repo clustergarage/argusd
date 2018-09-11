@@ -24,7 +24,7 @@ struct fimwatch {
     bool recursive;        // flag to watch recursively
 };
 
-struct fimwatch *wlcache; // array of cached watches
+struct fimwatch **wlcache; // array of cached watches
 int wlcachec;
 
 void join_namespace(const pid_t pid, const char *ns);

@@ -18,7 +18,7 @@
 #include "fimutil.h"
 
 // get access to shared variables from fimcache
-extern struct fimwatch *wlcache;
+extern struct fimwatch **wlcache;
 // set local static variables
 static mqd_t imq;
 
@@ -36,7 +36,7 @@ static mqd_t imq;
 static int reinitialize(struct fimwatch *watch) {
     static int reinitc; // @TODO: is this needed?
     int fd;
-    int i;
+    int i, slot;
     bool rebuild = watch->fd != EOF;
 
     if (rebuild) {
@@ -71,18 +71,22 @@ static int reinitialize(struct fimwatch *watch) {
     free_cache(watch);
     // begin traversing tree, or non-recursive directories
     watch_subtree(watch);
-    // cache information about the watch
-    add_watch_to_cache(watch);
+
+	slot = find_cached_slot(watch->pid, watch->sid);
+	if (slot == -1) {
+		// cache information about the watch
+		add_watch_to_cache(watch);
+	}
 
 #if DEBUG
     int cnt;
     for (i = 0, cnt = 0; i < wlcachec; ++i) {
-        if (wlcache[i].pid != watch->pid ||
-            wlcache[i].sid != watch->sid) {
+        if (wlcache[i]->pid != watch->pid ||
+            wlcache[i]->sid != watch->sid) {
             continue;
         }
-        if (wlcache[i].pathc != EOF) {
-            cnt += wlcache[i].pathc;
+        if (wlcache[i]->pathc != EOF) {
+            cnt += wlcache[i]->pathc;
         }
     }
     if (rebuild) {
@@ -94,7 +98,7 @@ static int reinitialize(struct fimwatch *watch) {
     // check cache consistency right away, in case there are multiple
     // containers in a single pod that don't have a path on the
     // filesystem that we specified to watch
-    check_cache_consistency(watch);
+    //check_cache_consistency(watch);
 
     return fd;
 }
@@ -105,7 +109,7 @@ static int reinitialize(struct fimwatch *watch) {
  * IN_MOVED_TO pair that share a cookie value, both events are consumed returns
  * the number of bytes in the event(s) consumed from `ptr`
  */
-static size_t process_next_inotify_event(struct fimwatch *watch, char *ptr, int len, int first) {
+static size_t process_next_inotify_event(struct fimwatch *watch, char *ptr, int len, bool first) {
     const struct inotify_event *event = (const struct inotify_event *)ptr;
     char *path;
     char fullpath[PATH_MAX + NAME_MAX];
@@ -171,13 +175,11 @@ static size_t process_next_inotify_event(struct fimwatch *watch, char *ptr, int 
         //      for the second time is harmless, but adding a second cache for
         //      the grandchild would leave the cache in a confused state)
         if (!path_name_to_cache_slot(watch, fullpath) > -1) {
-            slot = find_watch_checked(watch, event->wd);
             wdslot = wd_to_cache_slot(watch, event->wd);
-            if (slot > -1 &&
-                wdslot > -1 &&
+            if (wdslot > -1 &&
                 // only do this if watching recursively
-                wlcache[slot].recursive) {
-                watch_subtree(&wlcache[slot]);
+                watch->recursive) {
+                watch_subtree(watch);
             }
         }
     } else if (event->mask & IN_DELETE_SELF) {
@@ -312,7 +314,7 @@ static size_t process_next_inotify_event(struct fimwatch *watch, char *ptr, int 
             if (slot > -1 &&
                 remove_subtree(watch, fullpath) == -1) {
                 // cache reached an inconsistent state
-                reinitialize(&wlcache[slot]);
+                reinitialize(watch);
                 // discard all remaining events in current `read` buffer
                 return INOTIFY_READ_BUF_LEN;
             }
@@ -339,7 +341,7 @@ static size_t process_next_inotify_event(struct fimwatch *watch, char *ptr, int 
         // remove and rebuild the cache
         slot = find_watch_checked(watch, event->wd);
         if (slot > -1) {
-            reinitialize(&wlcache[slot]);
+            reinitialize(watch);
         }
         // discard all remaining events in current `read` buffer
         evtlen = INOTIFY_READ_BUF_LEN;
@@ -373,7 +375,7 @@ static size_t process_next_inotify_event(struct fimwatch *watch, char *ptr, int 
             // cache reached an inconsistent state
             slot = find_watch_checked(watch, event->wd);
             if (slot > -1) {
-                reinitialize(&wlcache[slot]);
+                reinitialize(watch);
             }
             // discard all remaining events in current `read` buffer
             return INOTIFY_READ_BUF_LEN;
@@ -409,7 +411,7 @@ sendevent: ; // hack to get past label syntax error
 #endif
     }
 
-    check_cache_consistency(watch);
+    //check_cache_consistency(watch);
 
     return evtlen;
 }
@@ -425,7 +427,7 @@ static void process_inotify_events(struct fimwatch *watch) {
     char buf[INOTIFY_READ_BUF_LEN] __attribute__((aligned(__alignof__(struct inotify_event))));
     ssize_t len, nr;
     int i, evtlen, slot;
-    int first = 1;
+    bool first = true;
     char *ptr;
 
     len = read(watch->fd, buf, INOTIFY_READ_BUF_LEN);
@@ -450,7 +452,7 @@ static void process_inotify_events(struct fimwatch *watch) {
 
         if (evtlen > 0) {
             ptr += evtlen;
-            first = 1;
+            first = true;
         } else {
             // we got here because an IN_MOVED_FROM event was found at the end
             // of a previously read buffer and that event may be part of an
@@ -465,7 +467,7 @@ static void process_inotify_events(struct fimwatch *watch) {
             // out-of-tree `rename`
             // set `first` to 0 for the next `process_next_inotify_event` call
             int savederr;
-            first = 0;
+            first = false;
             len = buf + len - ptr;
 
             // shuffle remaining bytes to start of buffer
@@ -525,7 +527,7 @@ int start_inotify_watcher(const int pid, const int sid, int pathc, char *paths[]
     int slot = find_cached_slot(pid, sid);
     struct fimwatch *watch;
     if (slot > -1) {
-        watch = &wlcache[slot];
+        watch = wlcache[slot];
     } else {
         // create new fimwatch placeholder struct, to be filled later
         watch = &(struct fimwatch){

@@ -163,6 +163,7 @@ int watch_path(struct fimwatch *watch, const char *path) {
         // this watch descriptor is already in the cache
         printf("wd: %d already in cache (%s)\n", wd, path);
         fflush(stdout);
+		return 0;
     }
 #endif
 
@@ -180,6 +181,7 @@ int watch_path(struct fimwatch *watch, const char *path) {
         perror("realloc");
     }
 #endif
+	// @FIXME: dont add non-directories unless directly specified by rootpaths and !only_dir flag
     watch->paths[watch->pathc] = strdup(path);
 
     ++watch->pathc;
@@ -244,6 +246,7 @@ void watch_subtree(struct fimwatch *watch) {
 #endif
     }
 
+	/*
     printf("  $$$$ add watch to cache:\n");
     printf("    $$   pid = %d\n", watch->pid);
     printf("    $$   sid = %d\n", watch->sid);
@@ -257,14 +260,14 @@ void watch_subtree(struct fimwatch *watch) {
     }
     printf("    $$   pathc = %d\n", watch->pathc);
     for (i = 0; i < watch->pathc; ++i) {
-        printf("     $     wd[%d] = %d\n", i, watch->wd[i]);
-        printf("     $     paths[%d] = %s\n", i, watch->paths[i]);
+        printf("     $     paths[%d] = %s; wd = %d\n", i, watch->paths[i], watch->wd[i]);
         fflush(stdout);
     }
     printf("    $$   event_mask = %d\n", watch->event_mask);
     printf("    $$   only_dir = %d\n", watch->only_dir);
     printf("    $$   recursive = %d\n", watch->recursive);
     fflush(stdout);
+	*/
 }
 
 /**
@@ -288,18 +291,18 @@ void rewrite_cached_paths(const struct fimwatch *watch, const char *oldpathpf, c
 #endif
 
     for (i = 0; i < wlcachec; ++i) {
-        if (wlcache[i].pid != watch->pid ||
-            wlcache[i].sid != watch->sid) {
+        if (wlcache[i]->pid != watch->pid ||
+            wlcache[i]->sid != watch->sid) {
             continue;
         }
-        for (j = 0; j < wlcache[i].pathc; ++j) {
-            if (strncmp(fullpath, wlcache[i].paths[j], len) == 0 &&
-                (wlcache[i].paths[j][len] == '/' ||
-                wlcache[i].paths[j][len] == '\0')) {
-                snprintf(newpath, sizeof(newpath), "%s%s", newpf, &wlcache[i].paths[j][len]);
-                wlcache[i].paths[j] = strdup(newpath);
+        for (j = 0; j < wlcache[i]->pathc; ++j) {
+            if (strncmp(fullpath, wlcache[i]->paths[j], len) == 0 &&
+                (wlcache[i]->paths[j][len] == '/' ||
+                wlcache[i]->paths[j][len] == '\0')) {
+                snprintf(newpath, sizeof(newpath), "%s%s", newpf, &wlcache[i]->paths[j][len]);
+                wlcache[i]->paths[j] = strdup(newpath);
 #if DEBUG
-                printf("    wd %d [cache slot %d] ==> %s\n", wlcache[i].wd[j], i, newpath);
+                printf("    wd %d [cache slot %d] ==> %s\n", wlcache[i]->wd[j], i, newpath);
                 fflush(stdout);
 #endif
             }
@@ -329,25 +332,25 @@ int remove_subtree(const struct fimwatch *watch, char *path) {
 #endif
 
     for (i = 0; i < wlcachec; ++i) {
-        if (wlcache[i].pid != watch->pid ||
-            wlcache[i].sid != watch->sid) {
+        if (wlcache[i]->pid != watch->pid ||
+            wlcache[i]->sid != watch->sid) {
             continue;
         }
-        if (wlcache[i].pathc > -1) {
-            for (j = 0; j < wlcache[i].pathc; ++j) {
-                if (strncmp(pn, wlcache[i].paths[j], len) == 0 &&
-                    (wlcache[i].paths[j][len] == '/' ||
-                    wlcache[i].paths[j][len] == '\0')) {
+        if (wlcache[i]->pathc > -1) {
+            for (j = 0; j < wlcache[i]->pathc; ++j) {
+                if (strncmp(pn, wlcache[i]->paths[j], len) == 0 &&
+                    (wlcache[i]->paths[j][len] == '/' ||
+                    wlcache[i]->paths[j][len] == '\0')) {
 #if DEBUG
                     printf("    removing watch: wd = %d (%s)\n",
-                        wlcache[i].wd[j], wlcache[i].paths[j]);
+                        wlcache[i]->wd[j], wlcache[i]->paths[j]);
                     fflush(stdout);
 #endif
 
-                    if (inotify_rm_watch(watch->fd, wlcache[i].wd[j]) == EOF) {
+                    if (inotify_rm_watch(watch->fd, wlcache[i]->wd[j]) == EOF) {
 #if DEBUG
-                        printf("inotify_rm_watch wd = %d (%s): %s\n", wlcache[i].wd[j],
-                            wlcache[i].paths[j], strerror(errno));
+                        printf("inotify_rm_watch wd = %d (%s): %s\n", wlcache[i]->wd[j],
+                            wlcache[i]->paths[j], strerror(errno));
                         fflush(stdout);
 #endif
 
