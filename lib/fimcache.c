@@ -12,18 +12,29 @@
 
 extern struct fimwatch *wlcache;
 
+int find_cached_slot(const int pid, const int sid) {
+    int i;
+    for (i = 0; i < wlcachec; ++i) {
+        if (wlcache[i].pid == pid &&
+            wlcache[i].sid == sid) {
+            return i;
+        }
+    }
+    return -1;
+}
+
 /**
  * deallocate the watch cache
  */
-void free_cache(const struct fimwatch *watch) {
+void free_cache(struct fimwatch *watch) {
     if (watch->slot == -1) {
-#if DEBUG
-        fprintf(stderr, "cache slot is -1\n");
-#endif
         return;
     }
-    free(watch->rootpaths);
+    // @TODO: document this
+    free(watch->wd);
     free(watch->paths);
+    watch->pathc = 0;
+    mark_cache_slot_empty(watch->slot);
 }
 
 /**
@@ -75,16 +86,13 @@ void remove_item_from_cache(struct fimwatch *watch, int const index) {
  * if found, return the slot number, otherwise return -1
  */
 int find_watch(const struct fimwatch *watch, const int wd) {
-    int i, j;
-    for (i = 0; i < wlcachec; ++i) {
-        if (wlcache[i].pid != watch->pid ||
-            wlcache[i].sid != watch->sid) {
-            continue;
-        }
-        for (j = 0; j < wlcache[i].pathc; ++j) {
-            if (wlcache[i].wd[j] == wd) {
-                return i;
-            }
+    int i;
+    if (watch->slot == -1) {
+        return -1;
+    }
+    for (i = 0; i < wlcache[watch->slot].pathc; ++i) {
+        if (wlcache[watch->slot].wd[i] == wd) {
+            return i;
         }
     }
     return -1;
@@ -112,19 +120,11 @@ int find_watch_checked(const struct fimwatch *watch, const int wd) {
  * mark a cache entry as unused
  */
 void mark_cache_slot_empty(const int slot) {
-    int i;
     wlcache[slot].pid = -1;
     wlcache[slot].sid = -1;
     wlcache[slot].slot = -1;
     wlcache[slot].fd = EOF;
-    for (i = 0; i < wlcache[slot].rootpathc; ++i) {
-        wlcache[slot].rootpaths[i] = '\0';
-    }
     wlcache[slot].rootpathc = -1;
-    for (i = 0; i < wlcache[slot].pathc; ++i) {
-        wlcache[slot].wd[i] = EOF;
-        wlcache[slot].paths[i] = '\0';
-    }
     wlcache[slot].pathc = -1;
     wlcache[slot].event_mask = -1;
     wlcache[slot].only_dir = false;
@@ -161,8 +161,9 @@ int find_empty_cache_slot() {
 /**
  * add an item to the cache
  */
-void add_watch_to_cache(const struct fimwatch *watch) {
+void add_watch_to_cache(struct fimwatch *watch) {
     int slot = find_empty_cache_slot();
+    watch->slot = slot;
     wlcache[slot] = *watch;
 }
 
@@ -171,49 +172,36 @@ void add_watch_to_cache(const struct fimwatch *watch) {
  * or -1 if the path is not in the cache
  */
 int path_name_to_cache_slot(const struct fimwatch *watch, const char *path) {
-    int i, j;
-    for (i = 0; i < wlcachec; ++i) {
-        if (wlcache[i].pid != watch->pid ||
-            wlcache[i].sid != watch->sid) {
-            continue;
-        }
-        if (wlcache[i].pathc > -1) {
-            for (j = 0; j < wlcache[i].pathc; ++j) {
-                if (strcmp(wlcache[i].paths[j], path) == 0) {
-                    return i;
-                }
-            }
+    int i;
+    if (watch->slot == -1 ||
+        wlcache[watch->slot].pathc == -1) {
+        return -1;
+    }
+    for (i = 0; i < wlcache[watch->slot].pathc; ++i) {
+        if (strcmp(wlcache[watch->slot].paths[i], path) == 0) {
+            return i;
         }
     }
     return -1;
 }
 
 char *wd_to_path_name(const struct fimwatch *watch, const int wd) {
-    int i, j;
-    for (i = 0; i < wlcachec; ++i) {
-        if (wlcache[i].pid != watch->pid ||
-            wlcache[i].sid != watch->sid) {
-            continue;
-        }
-        for (j = 0; j < wlcache[i].pathc; ++j) {
-            if (wlcache[i].wd[j] == wd) {
-                return wlcache[i].paths[j];
-            }
+    int i;
+    for (i = 0; i < watch->pathc; ++i) {
+        if (watch->wd[i] == wd) {
+            return watch->paths[i];
         }
     }
 }
 
 int wd_to_cache_slot(const struct fimwatch *watch, const int wd) {
-    int i, j;
-    for (i = 0; i < wlcachec; ++i) {
-        if (wlcache[i].pid != watch->pid ||
-            wlcache[i].sid != watch->sid) {
-            continue;
-        }
-        for (j = 0; j < wlcache[i].pathc; ++j) {
-            if (wlcache[i].wd[j] == wd) {
-                return j;
-            }
+    int i;
+    if (watch->slot == -1) {
+        return -1;
+    }
+    for (i = 0; i < wlcache[watch->slot].pathc; ++i) {
+        if (wlcache[watch->slot].wd[i] == wd) {
+            return i;
         }
     }
     return -1;

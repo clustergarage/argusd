@@ -36,9 +36,10 @@ static mqd_t imq;
 static int reinitialize(struct fimwatch *watch) {
     static int reinitc; // @TODO: is this needed?
     int fd;
-    int i, cnt;
+    int i;
+    bool rebuild = watch->fd != EOF;
 
-    if (watch->fd != EOF) {
+    if (rebuild) {
         close(watch->fd);
         ++reinitc;
 #if DEBUG
@@ -62,16 +63,19 @@ static int reinitialize(struct fimwatch *watch) {
     }
     watch->fd = fd;
 #if DEBUG
-    printf("    new fd = %d\n", fd);
+    printf("  new fd = %d\n", fd);
     fflush(stdout);
 #endif
 
     // free watch cache
     free_cache(watch);
-
     // begin traversing tree, or non-recursive directories
     watch_subtree(watch);
+    // cache information about the watch
+    add_watch_to_cache(watch);
 
+#if DEBUG
+    int cnt;
     for (i = 0, cnt = 0; i < wlcachec; ++i) {
         if (wlcache[i].pid != watch->pid ||
             wlcache[i].sid != watch->sid) {
@@ -81,8 +85,7 @@ static int reinitialize(struct fimwatch *watch) {
             cnt += wlcache[i].pathc;
         }
     }
-#if DEBUG
-    if (watch->fd != EOF) {
+    if (rebuild) {
         printf("rebuilt cache with %d entries\n", cnt);
         fflush(stdout);
     }
@@ -382,7 +385,7 @@ static size_t process_next_inotify_event(struct fimwatch *watch, char *ptr, int 
         // only continue with the events we care about
         !(event->mask & watch->event_mask)) {
         // discard all remaining events in current `read` buffer
-        return INOTIFY_READ_BUF_LEN;
+        return sizeof(struct inotify_event) + event->len;
     }
 
 sendevent: ; // hack to get past label syntax error
@@ -518,22 +521,29 @@ int start_inotify_watcher(const int pid, const int sid, int pathc, char *paths[]
     sigemptyset(&sigmask);
     sigaddset(&sigmask, SIGCHLD);
 
-    // create new fimwatch placeholder struct, to be filled later
-    struct fimwatch watch = {
-        .pid = pid,
-        .sid = sid,
-        .slot = -1,
-        .fd = EOF,
-        .rootpathc = pathc,
-        .rootpaths = paths,
-        .pathc = 0,
-        .event_mask = mask,
-        .only_dir = only_dir,
-        .recursive = recursive
-    };
+    // @TODO: document this
+    int slot = find_cached_slot(pid, sid);
+    struct fimwatch *watch;
+    if (slot > -1) {
+        watch = &wlcache[slot];
+    } else {
+        // create new fimwatch placeholder struct, to be filled later
+        watch = &(struct fimwatch){
+            .pid = pid,
+            .sid = sid,
+            .slot = -1,
+            .fd = EOF,
+            .rootpathc = pathc,
+            .rootpaths = paths,
+            .pathc = 0,
+            .event_mask = mask,
+            .only_dir = only_dir,
+            .recursive = recursive
+        };
+    }
 
     // save a copy of the paths
-    copy_root_paths(&watch);
+    copy_root_paths(watch);
 
 #if DEBUG
     printf("  Listening for events (pid = %d, sid = %d)\n", pid, sid);
@@ -541,7 +551,7 @@ int start_inotify_watcher(const int pid, const int sid, int pathc, char *paths[]
 #endif
 
     // create an inotify instance and populate it with entries for paths
-    fd = reinitialize(&watch);
+    fd = reinitialize(watch);
     if (fd == EOF) {
         goto exit;
     }
@@ -577,7 +587,7 @@ int start_inotify_watcher(const int pid, const int sid, int pathc, char *paths[]
         if (pollc > 0) {
             if (fds[0].revents & POLLIN) {
                 // inotify events are available
-                process_inotify_events(&watch);
+                process_inotify_events(watch);
             }
 
             if (fds[1].revents & POLLIN) {
@@ -593,13 +603,13 @@ int start_inotify_watcher(const int pid, const int sid, int pathc, char *paths[]
     }
 
 #if DEBUG
-    printf("  Listening for events stopped (pid = %d)\n", pid);
+    printf("  Listening for events stopped (pid = %d, sid = %d)\n", pid, sid);
     fflush(stdout);
 #endif
 
 exit:
     // free watch cache
-    free_cache(&watch);
+    free_cache(watch);
     // close inotify file descriptor
     if (fd != EOF) {
         close(fd);
