@@ -120,6 +120,38 @@ void remove_root_path(struct fimwatch *watch, const char *path) {
     }
 }
 
+bool should_ignore_path(struct fimwatch *watch, const char *path) {
+    struct stat sb;
+	int i;
+
+	// check the paths are directories
+	if (lstat(path, &sb) == EOF) {
+#if DEBUG
+		fprintf(stderr, "`lstat` failed on '%s'\n", path);
+		perror("lstat");
+#endif
+		return true;
+	}
+	// keep if it is a directory
+	if (S_ISDIR(sb.st_mode)) {
+		return false;
+	}
+
+	// if only watching for directories, ignore
+	if (watch->only_dir) {
+		return true;
+	}
+	// make sure path is directly in provided rootpaths
+	for (i = 0; i < watch->rootpathc; ++i) {
+		if (strcmp(path, watch->rootpaths[i]) == 0) {
+			return false;
+		}
+	}
+
+	// if all else fails, ignore by default
+	return true;
+}
+
 /**
  * add `path` to the watch list of the inotify file descriptor `ifd`
  * the process is not recursive
@@ -127,6 +159,16 @@ void remove_root_path(struct fimwatch *watch, const char *path) {
  */
 int watch_path(struct fimwatch *watch, const char *path) {
     int wd, slot, flags;
+
+	// dont add non-directories unless directly specified by rootpaths and
+	// only_dir flag is false
+	if (should_ignore_path(watch, path)) {
+#if DEBUG
+		printf("file is ignored: %s\n", path);
+		fflush(stdout);
+#endif
+		return 0;
+	}
 
     // @TODO: follow symlinks properly
     // we need to watch certain events at all times for keeping a consistent
@@ -181,7 +223,6 @@ int watch_path(struct fimwatch *watch, const char *path) {
         perror("realloc");
     }
 #endif
-	// @FIXME: dont add non-directories unless directly specified by rootpaths and !only_dir flag
     watch->paths[watch->pathc] = strdup(path);
 
     ++watch->pathc;
