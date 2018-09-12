@@ -59,7 +59,7 @@ static int reinitialize(struct fimwatch *watch) {
 #if DEBUG
         perror("inotify_init1");
 #endif
-        exit(EXIT_FAILURE);
+        return EOF;
     }
     watch->fd = fd;
 #if DEBUG

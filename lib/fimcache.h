@@ -6,7 +6,7 @@
 #include "fimutil.h"
 
 #ifndef ALLOC_INC
-#define ALLOC_INC 10
+#define ALLOC_INC 128
 #endif
 
 int find_cached_slot(const int pid, const int sid);

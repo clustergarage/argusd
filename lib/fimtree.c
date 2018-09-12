@@ -158,7 +158,7 @@ bool should_ignore_path(struct fimwatch *watch, const char *path) {
  * returns number of watches/cache entries added for this subtree
  */
 int watch_path(struct fimwatch *watch, const char *path) {
-    int wd, slot, flags;
+    int wd, slot;
 
     // dont add non-directories unless directly specified by rootpaths and
     // only_dir flag is false
@@ -173,7 +173,7 @@ int watch_path(struct fimwatch *watch, const char *path) {
     // @TODO: follow symlinks properly
     // we need to watch certain events at all times for keeping a consistent
     // view of the filesystem tree
-    flags |= IN_CREATE | IN_MOVED_FROM | IN_MOVED_TO | IN_DELETE_SELF;
+    uint32_t flags = IN_CREATE | IN_MOVED_FROM | IN_MOVED_TO | IN_DELETE_SELF;
     if (watch->only_dir) {
         flags |= IN_ONLYDIR;
     }
@@ -195,7 +195,6 @@ int watch_path(struct fimwatch *watch, const char *path) {
         if (errno == ENOENT) {
             return 0;
         } else {
-            //exit(EXIT_FAILURE);
             return -1;
         }
     }
