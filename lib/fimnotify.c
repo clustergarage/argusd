@@ -18,7 +18,7 @@
 #include "fimutil.h"
 
 // get access to shared variables from fimcache
-extern struct fimwatch **wlcache;
+extern struct fimwatch *wlcache;
 // set local static variables
 static mqd_t imq;
 
@@ -72,21 +72,21 @@ static int reinitialize(struct fimwatch *watch) {
     // begin traversing tree, or non-recursive directories
     watch_subtree(watch);
 
-	slot = find_cached_slot(watch->pid, watch->sid);
-	if (slot == -1) {
-		// cache information about the watch
-		add_watch_to_cache(watch);
-	}
+    slot = find_cached_slot(watch->pid, watch->sid);
+    if (slot == -1) {
+        // cache information about the watch
+        add_watch_to_cache(watch);
+    }
 
 #if DEBUG
     int cnt;
     for (i = 0, cnt = 0; i < wlcachec; ++i) {
-        if (wlcache[i]->pid != watch->pid ||
-            wlcache[i]->sid != watch->sid) {
+        if (wlcache[i].pid != watch->pid ||
+            wlcache[i].sid != watch->sid) {
             continue;
         }
-        if (wlcache[i]->pathc != EOF) {
-            cnt += wlcache[i]->pathc;
+        if (wlcache[i].pathc != EOF) {
+            cnt += wlcache[i].pathc;
         }
     }
     if (rebuild) {
@@ -98,7 +98,7 @@ static int reinitialize(struct fimwatch *watch) {
     // check cache consistency right away, in case there are multiple
     // containers in a single pod that don't have a path on the
     // filesystem that we specified to watch
-    //check_cache_consistency(watch);
+    check_cache_consistency(watch);
 
     return fd;
 }
@@ -179,7 +179,10 @@ static size_t process_next_inotify_event(struct fimwatch *watch, char *ptr, int 
             if (wdslot > -1 &&
                 // only do this if watching recursively
                 watch->recursive) {
+                watch->pathc = 0;
                 watch_subtree(watch);
+                // @TODO: does this work
+                wlcache[watch->slot] = *watch;
             }
         }
     } else if (event->mask & IN_DELETE_SELF) {
@@ -411,7 +414,7 @@ sendevent: ; // hack to get past label syntax error
 #endif
     }
 
-    //check_cache_consistency(watch);
+    check_cache_consistency(watch);
 
     return evtlen;
 }
@@ -524,13 +527,13 @@ int start_inotify_watcher(const int pid, const int sid, int pathc, char *paths[]
     sigaddset(&sigmask, SIGCHLD);
 
     // @TODO: document this
+    struct fimwatch watch;
     int slot = find_cached_slot(pid, sid);
-    struct fimwatch *watch;
     if (slot > -1) {
         watch = wlcache[slot];
     } else {
         // create new fimwatch placeholder struct, to be filled later
-        watch = &(struct fimwatch){
+        watch = (struct fimwatch){
             .pid = pid,
             .sid = sid,
             .slot = -1,
@@ -545,7 +548,7 @@ int start_inotify_watcher(const int pid, const int sid, int pathc, char *paths[]
     }
 
     // save a copy of the paths
-    copy_root_paths(watch);
+    copy_root_paths(&watch);
 
 #if DEBUG
     printf("  Listening for events (pid = %d, sid = %d)\n", pid, sid);
@@ -553,7 +556,7 @@ int start_inotify_watcher(const int pid, const int sid, int pathc, char *paths[]
 #endif
 
     // create an inotify instance and populate it with entries for paths
-    fd = reinitialize(watch);
+    fd = reinitialize(&watch);
     if (fd == EOF) {
         goto exit;
     }
@@ -589,7 +592,7 @@ int start_inotify_watcher(const int pid, const int sid, int pathc, char *paths[]
         if (pollc > 0) {
             if (fds[0].revents & POLLIN) {
                 // inotify events are available
-                process_inotify_events(watch);
+                process_inotify_events(&watch);
             }
 
             if (fds[1].revents & POLLIN) {
@@ -611,7 +614,7 @@ int start_inotify_watcher(const int pid, const int sid, int pathc, char *paths[]
 
 exit:
     // free watch cache
-    free_cache(watch);
+    free_cache(&watch);
     // close inotify file descriptor
     if (fd != EOF) {
         close(fd);

@@ -122,34 +122,34 @@ void remove_root_path(struct fimwatch *watch, const char *path) {
 
 bool should_ignore_path(struct fimwatch *watch, const char *path) {
     struct stat sb;
-	int i;
+    int i;
 
-	// check the paths are directories
-	if (lstat(path, &sb) == EOF) {
+    // check the paths are directories
+    if (lstat(path, &sb) == EOF) {
 #if DEBUG
-		fprintf(stderr, "`lstat` failed on '%s'\n", path);
-		perror("lstat");
+        fprintf(stderr, "`lstat` failed on '%s'\n", path);
+        perror("lstat");
 #endif
-		return true;
-	}
-	// keep if it is a directory
-	if (S_ISDIR(sb.st_mode)) {
-		return false;
-	}
+        return true;
+    }
+    // keep if it is a directory
+    if (S_ISDIR(sb.st_mode)) {
+        return false;
+    }
 
-	// if only watching for directories, ignore
-	if (watch->only_dir) {
-		return true;
-	}
-	// make sure path is directly in provided rootpaths
-	for (i = 0; i < watch->rootpathc; ++i) {
-		if (strcmp(path, watch->rootpaths[i]) == 0) {
-			return false;
-		}
-	}
+    // if only watching for directories, ignore
+    if (watch->only_dir) {
+        return true;
+    }
+    // make sure path is directly in provided rootpaths
+    for (i = 0; i < watch->rootpathc; ++i) {
+        if (strcmp(path, watch->rootpaths[i]) == 0) {
+            return false;
+        }
+    }
 
-	// if all else fails, ignore by default
-	return true;
+    // if all else fails, ignore by default
+    return true;
 }
 
 /**
@@ -160,15 +160,15 @@ bool should_ignore_path(struct fimwatch *watch, const char *path) {
 int watch_path(struct fimwatch *watch, const char *path) {
     int wd, slot, flags;
 
-	// dont add non-directories unless directly specified by rootpaths and
-	// only_dir flag is false
-	if (should_ignore_path(watch, path)) {
+    // dont add non-directories unless directly specified by rootpaths and
+    // only_dir flag is false
+    if (should_ignore_path(watch, path)) {
 #if DEBUG
-		printf("file is ignored: %s\n", path);
-		fflush(stdout);
+        printf("file is ignored: %s\n", path);
+        fflush(stdout);
 #endif
-		return 0;
-	}
+        return 0;
+    }
 
     // @TODO: follow symlinks properly
     // we need to watch certain events at all times for keeping a consistent
@@ -205,7 +205,7 @@ int watch_path(struct fimwatch *watch, const char *path) {
         // this watch descriptor is already in the cache
         printf("wd: %d already in cache (%s)\n", wd, path);
         fflush(stdout);
-		return 0;
+        //return 0;
     }
 #endif
 
@@ -287,8 +287,8 @@ void watch_subtree(struct fimwatch *watch) {
 #endif
     }
 
-	/*
-    printf("  $$$$ add watch to cache:\n");
+    /*
+    printf("  $$$$ watch subtree:\n");
     printf("    $$   pid = %d\n", watch->pid);
     printf("    $$   sid = %d\n", watch->sid);
     printf("    $$   fd = %d\n", watch->fd);
@@ -308,7 +308,7 @@ void watch_subtree(struct fimwatch *watch) {
     printf("    $$   only_dir = %d\n", watch->only_dir);
     printf("    $$   recursive = %d\n", watch->recursive);
     fflush(stdout);
-	*/
+    */
 }
 
 /**
@@ -332,18 +332,18 @@ void rewrite_cached_paths(const struct fimwatch *watch, const char *oldpathpf, c
 #endif
 
     for (i = 0; i < wlcachec; ++i) {
-        if (wlcache[i]->pid != watch->pid ||
-            wlcache[i]->sid != watch->sid) {
+        if (wlcache[i].pid != watch->pid ||
+            wlcache[i].sid != watch->sid) {
             continue;
         }
-        for (j = 0; j < wlcache[i]->pathc; ++j) {
-            if (strncmp(fullpath, wlcache[i]->paths[j], len) == 0 &&
-                (wlcache[i]->paths[j][len] == '/' ||
-                wlcache[i]->paths[j][len] == '\0')) {
-                snprintf(newpath, sizeof(newpath), "%s%s", newpf, &wlcache[i]->paths[j][len]);
-                wlcache[i]->paths[j] = strdup(newpath);
+        for (j = 0; j < wlcache[i].pathc; ++j) {
+            if (strncmp(fullpath, wlcache[i].paths[j], len) == 0 &&
+                (wlcache[i].paths[j][len] == '/' ||
+                wlcache[i].paths[j][len] == '\0')) {
+                snprintf(newpath, sizeof(newpath), "%s%s", newpf, &wlcache[i].paths[j][len]);
+                wlcache[i].paths[j] = strdup(newpath);
 #if DEBUG
-                printf("    wd %d [cache slot %d] ==> %s\n", wlcache[i]->wd[j], i, newpath);
+                printf("    wd %d [cache slot %d] ==> %s\n", wlcache[i].wd[j], i, newpath);
                 fflush(stdout);
 #endif
             }
@@ -373,25 +373,25 @@ int remove_subtree(const struct fimwatch *watch, char *path) {
 #endif
 
     for (i = 0; i < wlcachec; ++i) {
-        if (wlcache[i]->pid != watch->pid ||
-            wlcache[i]->sid != watch->sid) {
+        if (wlcache[i].pid != watch->pid ||
+            wlcache[i].sid != watch->sid) {
             continue;
         }
-        if (wlcache[i]->pathc > -1) {
-            for (j = 0; j < wlcache[i]->pathc; ++j) {
-                if (strncmp(pn, wlcache[i]->paths[j], len) == 0 &&
-                    (wlcache[i]->paths[j][len] == '/' ||
-                    wlcache[i]->paths[j][len] == '\0')) {
+        if (wlcache[i].pathc > -1) {
+            for (j = 0; j < wlcache[i].pathc; ++j) {
+                if (strncmp(pn, wlcache[i].paths[j], len) == 0 &&
+                    (wlcache[i].paths[j][len] == '/' ||
+                    wlcache[i].paths[j][len] == '\0')) {
 #if DEBUG
                     printf("    removing watch: wd = %d (%s)\n",
-                        wlcache[i]->wd[j], wlcache[i]->paths[j]);
+                        wlcache[i].wd[j], wlcache[i].paths[j]);
                     fflush(stdout);
 #endif
 
-                    if (inotify_rm_watch(watch->fd, wlcache[i]->wd[j]) == EOF) {
+                    if (inotify_rm_watch(watch->fd, wlcache[i].wd[j]) == EOF) {
 #if DEBUG
-                        printf("inotify_rm_watch wd = %d (%s): %s\n", wlcache[i]->wd[j],
-                            wlcache[i]->paths[j], strerror(errno));
+                        printf("inotify_rm_watch wd = %d (%s): %s\n", wlcache[i].wd[j],
+                            wlcache[i].paths[j], strerror(errno));
                         fflush(stdout);
 #endif
 
