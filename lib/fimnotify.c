@@ -517,8 +517,8 @@ static void process_inotify_events(struct fimwatch *watch) {
     }
 }
 
-int start_inotify_watcher(const int pid, const int sid, int pathc, char *paths[], uint32_t mask,
-    bool only_dir, bool recursive, int processevtfd, mqd_t mq) {
+int start_inotify_watcher(const int pid, const int sid, int pathc, char *paths[], int ignorec, char *ignores[],
+    uint32_t mask, bool only_dir, bool recursive, int max_depth, int processevtfd, mqd_t mq) {
     int fd, pollc;
     nfds_t nfds;
     struct pollfd fds[2];
@@ -541,9 +541,12 @@ int start_inotify_watcher(const int pid, const int sid, int pathc, char *paths[]
             .rootpathc = pathc,
             .rootpaths = paths,
             .pathc = 0,
+            .ignorec = ignorec,
+            .ignores = ignores,
             .event_mask = mask,
             .only_dir = only_dir,
-            .recursive = recursive
+            .recursive = recursive,
+            .max_depth = max_depth
         };
     }
 

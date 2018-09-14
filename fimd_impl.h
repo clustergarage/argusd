@@ -18,11 +18,12 @@ public:
     grpc::Status DestroyWatch(grpc::ServerContext *context, const fim::FimdConfig *request, fim::Empty *response) override;
 
 private:
-    std::vector<int> getPidsFromRequest(const fim::FimdConfig *request);
+    std::vector<int> getPidsFromRequest(std::shared_ptr<fim::FimdConfig> request);
     std::shared_ptr<fim::FimdHandle> findFimdWatcherByPids(const std::string nodeName, const std::vector<int> pids);
-    char **getPathArrayFromSubject(const int pid, const fim::FimWatcherSubject subject);
-    uint32_t getEventMaskFromSubject(const fim::FimWatcherSubject subject);
-    void createInotifyWatcher(const fim::FimWatcherSubject subject, const int pid, const int sid,
+    char **getPathArrayFromSubject(const int pid, std::shared_ptr<fim::FimWatcherSubject> subject);
+	char **getPathArrayFromIgnore(std::shared_ptr<fim::FimWatcherSubject> subject);
+    uint32_t getEventMaskFromSubject(std::shared_ptr<fim::FimWatcherSubject> subject);
+    void createInotifyWatcher(std::shared_ptr<fim::FimWatcherSubject> subject, const int pid, const int sid,
         google::protobuf::RepeatedField<google::protobuf::int32> *procFds);
     mqd_t createMessageQueue(const std::string logFormat, const std::string nodeName, const std::string podName, bool recreate);
     static void startMessageQueue(const std::string logFormat, const std::string nodeName, const std::string podName, mqd_t mq);

@@ -163,10 +163,6 @@ int watch_path(struct fimwatch *watch, const char *path) {
     // dont add non-directories unless directly specified by rootpaths and
     // only_dir flag is false
     if (should_ignore_path(watch, path)) {
-#if DEBUG
-        printf("file is ignored: %s\n", path);
-        fflush(stdout);
-#endif
         return 0;
     }
 
@@ -243,13 +239,26 @@ int watch_path_recursive(struct fimwatch *watch, const char *path) {
      * that the tree traversal should continue
      */
     int traverse_tree(const char *path, const struct stat *sb, int tflag, struct FTW *ftwbuf) {
+        int i;
         if (watch->only_dir &&
             !S_ISDIR(sb->st_mode)) {
             // ignore nondirectory files
-            return 0;
+            return FTW_CONTINUE;
         }
+		// stop recursing subtree if path in ignores list
+        for (i = 0; i < watch->ignorec; ++i) {
+            if (strcmp(&path[ftwbuf->base], watch->ignores[i]) == 0) {
+                return FTW_SKIP_SUBTREE;
+            }
+        }
+		// stop recursing siblings if reached max depth
+		if (watch->max_depth &&
+			ftwbuf->level + 1 > watch->max_depth) {
+			return FTW_SKIP_SIBLINGS;
+		}
+
 #if DEBUG
-        printf("    traverse_tree: %s\n", path);
+        printf("    traverse_tree: %s; level = %d\n", path, ftwbuf->level);
         fflush(stdout);
 #endif
         return watch_path(watch, path);
@@ -259,7 +268,7 @@ int watch_path_recursive(struct fimwatch *watch, const char *path) {
     // lead us in circles)
     // by the time we come to process `path`, it may already have been deleted,
     // so we log errors from `nftw`, but keep on going
-    if (nftw(path, traverse_tree, 20, FTW_PHYS) == EOF) {
+    if (nftw(path, traverse_tree, 20, FTW_ACTIONRETVAL | FTW_PHYS) == EOF) {
 #if DEBUG
         printf("nftw: %s: %s (directory probably deleted before we could watch)\n", path, strerror(errno));
         fflush(stdout);

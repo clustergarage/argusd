@@ -22,10 +22,11 @@ extern "C" {
 }
 
 namespace fimd {
+// @TODO: document this
 std::string FimdImpl::DEFAULT_FORMAT = "{event} {ftype} '{path}{sep}{file}' ({pod}:{node})";
 
 grpc::Status FimdImpl::CreateWatch(grpc::ServerContext *context, const fim::FimdConfig *request, fim::FimdHandle *response) {
-    auto pids = getPidsFromRequest(request);
+    auto pids = getPidsFromRequest(std::make_shared<fim::FimdConfig>(*request));
     if (!pids.size()) {
         return grpc::Status::CANCELLED;
     }
@@ -53,7 +54,8 @@ grpc::Status FimdImpl::CreateWatch(grpc::ServerContext *context, const fim::Fimd
         int i = 0;
         for_each(request->subject().cbegin(), request->subject().cend(), [&](const fim::FimWatcherSubject subject) {
             // @TODO: check if any watchers are started, if not, don't add to response
-            createInotifyWatcher(subject, pid, i, response->mutable_processeventfd());
+            createInotifyWatcher(std::make_shared<fim::FimWatcherSubject>(subject), pid, i,
+                response->mutable_processeventfd());
             ++i;
         });
         response->add_pid(pid);
@@ -72,7 +74,7 @@ grpc::Status FimdImpl::CreateWatch(grpc::ServerContext *context, const fim::Fimd
 }
 
 grpc::Status FimdImpl::DestroyWatch(grpc::ServerContext *context, const fim::FimdConfig *request, fim::Empty *response) {
-    auto pids = getPidsFromRequest(request);
+    auto pids = getPidsFromRequest(std::make_shared<fim::FimdConfig>(*request));
     if (!pids.size()) {
         return grpc::Status::CANCELLED;
     }
@@ -91,7 +93,7 @@ grpc::Status FimdImpl::DestroyWatch(grpc::ServerContext *context, const fim::Fim
     return grpc::Status::OK;
 }
 
-std::vector<int> FimdImpl::getPidsFromRequest(const fim::FimdConfig *request) {
+std::vector<int> FimdImpl::getPidsFromRequest(std::shared_ptr<fim::FimdConfig> request) {
     std::vector<int> pids;
     std::for_each(request->containerid().cbegin(), request->containerid().cend(), [&](const std::string containerId) {
         int pid = FimdUtil::getPidForContainer(cleanContainerId(containerId));
@@ -118,9 +120,9 @@ std::shared_ptr<fim::FimdHandle> FimdImpl::findFimdWatcherByPids(const std::stri
     return nullptr;
 }
 
-char **FimdImpl::getPathArrayFromSubject(const int pid, const fim::FimWatcherSubject subject) {
+char **FimdImpl::getPathArrayFromSubject(const int pid, std::shared_ptr<fim::FimWatcherSubject> subject) {
     std::vector<std::string> pathvec;
-    std::for_each(subject.path().cbegin(), subject.path().cend(), [&](std::string path) {
+    std::for_each(subject->path().cbegin(), subject->path().cend(), [&](std::string path) {
         std::stringstream ss;
         ss << "/proc/" << pid << "/root" << path.c_str();
         pathvec.push_back(ss.str());
@@ -134,10 +136,20 @@ char **FimdImpl::getPathArrayFromSubject(const int pid, const fim::FimWatcherSub
     return patharr;
 }
 
-uint32_t FimdImpl::getEventMaskFromSubject(const fim::FimWatcherSubject subject) {
-    // @TODO: document this
-    uint32_t mask = 0; //IN_DONT_FOLLOW;
-    std::for_each(subject.event().cbegin(), subject.event().cend(), [&](std::string event) {
+char **FimdImpl::getPathArrayFromIgnore(std::shared_ptr<fim::FimWatcherSubject> subject) {
+    char **patharr = new char *[subject->ignore_size()];
+    size_t i = 0;
+    std::for_each(subject->ignore().cbegin(), subject->ignore().cend(), [&](std::string path) {
+        patharr[i] = new char[path.size() + 1];
+        strcpy(patharr[i], path.c_str());
+        ++i;
+    });
+    return patharr;
+}
+
+uint32_t FimdImpl::getEventMaskFromSubject(std::shared_ptr<fim::FimWatcherSubject> subject) {
+    uint32_t mask = 0;
+    std::for_each(subject->event().cbegin(), subject->event().cend(), [&](std::string event) {
         const char *evt = event.c_str();
         if (strcmp(evt, "all") == 0)         mask |= IN_ALL_EVENTS;
         else if (strcmp(evt, "access") == 0) mask |= IN_ACCESS;
@@ -152,7 +164,7 @@ uint32_t FimdImpl::getEventMaskFromSubject(const fim::FimWatcherSubject subject)
     return mask;
 }
 
-void FimdImpl::createInotifyWatcher(const fim::FimWatcherSubject subject, const int pid, const int sid,
+void FimdImpl::createInotifyWatcher(std::shared_ptr<fim::FimWatcherSubject> subject, const int pid, const int sid,
     google::protobuf::RepeatedField<google::protobuf::int32> *eventProcessfds) {
     // create anonymous pipe to communicate with inotify watcher
     int processfd = eventfd(0, EFD_CLOEXEC);
@@ -161,12 +173,11 @@ void FimdImpl::createInotifyWatcher(const fim::FimWatcherSubject subject, const 
     }
     eventProcessfds->Add(processfd);
 
-    std::packaged_task<int(int, int, int, char **, uint32_t, bool, bool, int, mqd_t)> task(start_inotify_watcher);
+    std::packaged_task<int(int, int, int, char **, int, char **, uint32_t, bool, bool, int, int, mqd_t)> task(start_inotify_watcher);
     std::shared_future<int> result(task.get_future());
-    std::thread taskThread(std::move(task), pid, sid, subject.path_size(),
-        getPathArrayFromSubject(pid, subject),
-        getEventMaskFromSubject(subject),
-        subject.onlydir(), subject.recursive(), processfd, mq_);
+    std::thread taskThread(std::move(task), pid, sid, subject->path_size(), getPathArrayFromSubject(pid, subject),
+        subject->ignore_size(), getPathArrayFromIgnore(subject), getEventMaskFromSubject(subject),
+        subject->onlydir(), subject->recursive(), subject->maxdepth(), processfd, mq_);
     // start as daemon process
     taskThread.detach();
 
