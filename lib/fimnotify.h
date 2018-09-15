@@ -22,5 +22,6 @@ static size_t process_next_inotify_event(struct fimwatch *watch, char *buf, int 
 static void process_inotify_events(struct fimwatch *watch);
 int start_inotify_watcher(const int pid, const int sid, int pathc, char *paths[], int ignorec, char *ignores[],
     uint32_t mask, bool only_dir, bool recursive, int max_depth, int processevtfd, mqd_t mq);
+void send_watcher_kill_signal(const int processfd);
 
 #endif

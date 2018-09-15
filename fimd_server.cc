@@ -15,7 +15,9 @@
 
 int main(int argc, char **argv) {
     google::InitGoogleLogging(argv[0]);
+#if DEBUG
     google::InstallFailureSignalHandler();
+#endif
     FLAGS_stderrthreshold = google::INFO;
     FLAGS_colorlogtostderr = true;
 

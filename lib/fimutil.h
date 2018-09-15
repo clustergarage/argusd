@@ -25,6 +25,7 @@ struct fimwatch {
     bool only_dir;                  // flag to watch only directories
     bool recursive;                 // flag to watch recursively
     int max_depth;                  // max `nftw` depth to recurse through
+    int processevtfd;               // anonymous pipe to send watch kill signal
 };
 
 struct fimwatch *wlcache; // array of cached watches

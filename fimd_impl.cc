@@ -19,6 +19,7 @@
 #include "fimd_util.h"
 extern "C" {
 #include "lib/fimnotify.h"
+#include "lib/fimutil.h"
 }
 
 namespace fimd {
@@ -280,11 +281,8 @@ void FimdImpl::startMessageQueue(const std::string logFormat, const std::string 
 
 void FimdImpl::sendKillSignalToWatcher(std::shared_ptr<fim::FimdHandle> watcher) {
     // kill existing watcher polls
-    uint64_t value = FIMNOTIFY_KILL;
     std::for_each(watcher->processeventfd().cbegin(), watcher->processeventfd().cend(), [&](const int processfd) {
-        if (write(processfd, &value, sizeof(value)) == EOF) {
-            // do stuff
-        }
+        send_watcher_kill_signal(processfd);
         eraseEventProcessfd(watcher->mutable_processeventfd(), processfd);
     });
 }
@@ -301,7 +299,9 @@ void FimdImpl::eraseEventProcessfd(google::protobuf::RepeatedField<google::proto
 void FimdImpl::sendExitMessageToMessageQueue(std::shared_ptr<fim::FimdHandle> watcher) {
     // @TODO: document this
     if (mq_send(watcher->mqfd(), MQ_EXIT_MESSAGE, strlen(MQ_EXIT_MESSAGE), 1) == EOF) {
-        // do stuff
+#if DEBUG
+        perror("mq_send");
+#endif
     }
 }
 } // namespace fimd

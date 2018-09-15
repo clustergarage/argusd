@@ -358,6 +358,7 @@ static size_t process_next_inotify_event(struct fimwatch *watch, char *ptr, int 
         fflush(stdout);
 #endif
         mark_cache_slot_empty(slot);
+        send_watcher_kill_signal(watch->processevtfd);
         // no need to remove the watch; that happens automatically
     } else if (event->mask & IN_MOVE_SELF &&
         find_root_path(watch, path) != NULL) {
@@ -546,7 +547,8 @@ int start_inotify_watcher(const int pid, const int sid, int pathc, char *paths[]
             .event_mask = mask,
             .only_dir = only_dir,
             .recursive = recursive,
-            .max_depth = max_depth
+            .max_depth = max_depth,
+            .processevtfd = processevtfd
         };
     }
 
@@ -624,4 +626,13 @@ exit:
     }
 
     return errno ? EXIT_FAILURE : EXIT_SUCCESS;
+}
+
+void send_watcher_kill_signal(int processfd) {
+    uint64_t value = FIMNOTIFY_KILL;
+    if (write(processfd, &value, sizeof(value)) == EOF) {
+#if DEBUG
+        perror("write");
+#endif
+    }
 }

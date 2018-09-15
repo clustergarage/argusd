@@ -16,4 +16,6 @@ RUN cmake -DCMAKE_MAKE_PROGRAM=make \
 
 FROM scratch
 COPY --from=builder /opt/fimd/dockerbuild/fimd /
+# glog requires /tmp to exist as log_dir is /tmp by default
+COPY --from=builder /tmp /tmp
 CMD ["/fimd"]
