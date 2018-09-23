@@ -16,6 +16,7 @@ public:
 
     grpc::Status CreateWatch(grpc::ServerContext *context, const fim::FimdConfig *request, fim::FimdHandle *response) override;
     grpc::Status DestroyWatch(grpc::ServerContext *context, const fim::FimdConfig *request, fim::Empty *response) override;
+    grpc::Status GetWatchState(grpc::ServerContext *context, const fim::Empty *request, grpc::ServerWriter<fim::FimdHandle> *writer) override;
 
 private:
     std::vector<int> getPidsFromRequest(std::shared_ptr<fim::FimdConfig> request);

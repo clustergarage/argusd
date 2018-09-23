@@ -94,6 +94,15 @@ grpc::Status FimdImpl::DestroyWatch(grpc::ServerContext *context, const fim::Fim
     return grpc::Status::OK;
 }
 
+grpc::Status FimdImpl::GetWatchState(grpc::ServerContext *context, const fim::Empty *request, grpc::ServerWriter<fim::FimdHandle> *writer) {
+    std::for_each(watchers_.cbegin(), watchers_.cend(), [&](const std::shared_ptr<fim::FimdHandle> watcher) {
+        if (!writer->Write(*watcher)) {
+            // broken stream
+        }
+    });
+    return grpc::Status::OK;
+}
+
 std::vector<int> FimdImpl::getPidsFromRequest(std::shared_ptr<fim::FimdConfig> request) {
     std::vector<int> pids;
     std::for_each(request->containerid().cbegin(), request->containerid().cend(), [&](const std::string containerId) {
