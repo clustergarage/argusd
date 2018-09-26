@@ -1,6 +1,7 @@
 #ifndef __FIM_UTIL__
 #define __FIM_UTIL__
 
+#include <mqueue.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -26,6 +27,7 @@ struct fimwatch {
     bool recursive;                 // flag to watch recursively
     int max_depth;                  // max `nftw` depth to recurse through
     int processevtfd;               // anonymous pipe to send watch kill signal
+    mqd_t mq;                       // message queue file descriptor
 };
 
 struct fimwatch *wlcache; // array of cached watches

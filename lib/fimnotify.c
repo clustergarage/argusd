@@ -19,8 +19,6 @@
 
 // get access to shared variables from fimcache
 extern struct fimwatch *wlcache;
-// set local static variables
-static mqd_t imq;
 
 /**
  * when the cache is in an unrecoverable state, we discard the current
@@ -409,7 +407,7 @@ sendevent: ; // hack to get past label syntax error
 #endif
 
     // @TODO: document this
-    if (mq_send(imq, (const char *)&fwevent, sizeof(fwevent), 0) == EOF) {
+    if (mq_send(watch->mq, (const char *)&fwevent, sizeof(fwevent), 0) == EOF) {
 #if DEBUG
         perror("mq_send");
 #endif
@@ -548,7 +546,8 @@ int start_inotify_watcher(const int pid, const int sid, int pathc, char *paths[]
             .only_dir = only_dir,
             .recursive = recursive,
             .max_depth = max_depth,
-            .processevtfd = processevtfd
+            .processevtfd = processevtfd,
+            .mq = mq
         };
     }
 
@@ -565,12 +564,6 @@ int start_inotify_watcher(const int pid, const int sid, int pathc, char *paths[]
     if (fd == EOF) {
         goto exit;
     }
-
-    // store mq file descriptor
-    if (mq == EOF) {
-        goto exit;
-    }
-    imq = mq;
 
     // prepare for polling
     nfds = 2;

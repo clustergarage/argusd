@@ -49,14 +49,14 @@ grpc::Status FimdImpl::CreateWatch(grpc::ServerContext *context, const fim::Fimd
     response->set_nodename(request->nodename().c_str());
     response->set_podname(request->podname().c_str());
     response->set_mqfd(static_cast<google::protobuf::int32>(createMessageQueue(request->logformat(),
-        request->nodename(), request->podname(), (watcher != nullptr))));
+        request->nodename(), request->podname(), (watcher != nullptr ? response->mqfd() : EOF))));
 
     for_each(pids.cbegin(), pids.cend(), [&](const int pid) {
         int i = 0;
         for_each(request->subject().cbegin(), request->subject().cend(), [&](const fim::FimWatcherSubject subject) {
             // @TODO: check if any watchers are started, if not, don't add to response
             createInotifyWatcher(std::make_shared<fim::FimWatcherSubject>(subject), pid, i,
-                response->mutable_processeventfd());
+                response->mutable_processeventfd(), response->mqfd());
             ++i;
         });
         response->add_pid(pid);
@@ -175,7 +175,7 @@ uint32_t FimdImpl::getEventMaskFromSubject(std::shared_ptr<fim::FimWatcherSubjec
 }
 
 void FimdImpl::createInotifyWatcher(std::shared_ptr<fim::FimWatcherSubject> subject, const int pid, const int sid,
-    google::protobuf::RepeatedField<google::protobuf::int32> *eventProcessfds) {
+    google::protobuf::RepeatedField<google::protobuf::int32> *eventProcessfds, const mqd_t mq) {
     // create anonymous pipe to communicate with inotify watcher
     int processfd = eventfd(0, EFD_CLOEXEC);
     if (processfd == EOF) {
@@ -187,7 +187,7 @@ void FimdImpl::createInotifyWatcher(std::shared_ptr<fim::FimWatcherSubject> subj
     std::shared_future<int> result(task.get_future());
     std::thread taskThread(std::move(task), pid, sid, subject->path_size(), getPathArrayFromSubject(pid, subject),
         subject->ignore_size(), getPathArrayFromIgnore(subject), getEventMaskFromSubject(subject),
-        subject->onlydir(), subject->recursive(), subject->maxdepth(), processfd, mq_);
+        subject->onlydir(), subject->recursive(), subject->maxdepth(), processfd, mq);
     // start as daemon process
     taskThread.detach();
 
@@ -206,7 +206,16 @@ void FimdImpl::createInotifyWatcher(std::shared_ptr<fim::FimWatcherSubject> subj
     cleanupThread.detach();
 }
 
-mqd_t FimdImpl::createMessageQueue(const std::string logFormat, const std::string nodeName, const std::string podName, bool recreate) {
+mqd_t FimdImpl::createMessageQueue(const std::string logFormat, const std::string nodeName, const std::string podName, mqd_t mq) {
+    std::stringstream ss;
+    ss << MQ_QUEUE_NAME << "-" << podName;
+    std::string mqPath = ss.str();
+
+    if (mq != EOF) {
+        mq_close(mq);
+        mq_unlink(mqPath.c_str());
+    }
+
     mq_attr attr;
     // initialize the queue attributes
     attr.mq_flags = 0;
@@ -214,14 +223,9 @@ mqd_t FimdImpl::createMessageQueue(const std::string logFormat, const std::strin
     attr.mq_msgsize = MQ_MAX_SIZE;
     attr.mq_curmsgs = 0;
 
-    if (recreate) {
-        mq_close(mq_);
-        mq_unlink(MQ_QUEUE_NAME);
-    }
-
     // create the message queue
-    mq_ = mq_open(MQ_QUEUE_NAME, O_CREAT | O_CLOEXEC | O_RDWR, S_IRUSR | S_IWUSR, &attr);
-    if (mq_ == EOF) {
+    mq = mq_open(mqPath.c_str(), O_CREAT | O_CLOEXEC | O_RDWR, S_IRUSR | S_IWUSR, &attr);
+    if (mq == EOF) {
 #if DEBUG
         perror("mq_open");
 #endif
@@ -229,21 +233,23 @@ mqd_t FimdImpl::createMessageQueue(const std::string logFormat, const std::strin
     }
 
     // start message queue
-    std::packaged_task<void(const std::string, const std::string, const std::string, mqd_t)> queue(startMessageQueue);
-    std::thread queueThread(move(queue), logFormat, nodeName, podName, mq_);
+    std::packaged_task<void(const std::string, const std::string, const std::string, const mqd_t, const std::string)> queue(startMessageQueue);
+    std::thread queueThread(move(queue), logFormat, nodeName, podName, mq, mqPath);
     // start as daemon process
     queueThread.detach();
 
-    return mq_;
+    return mq;
 }
 
-void FimdImpl::startMessageQueue(const std::string logFormat, const std::string nodeName, const std::string podName, mqd_t mq) {
+void FimdImpl::startMessageQueue(const std::string logFormat, const std::string nodeName, const std::string podName,
+    const mqd_t mq, const std::string mqPath) {
+
     bool done = false;
     do {
         char buffer[MQ_MAX_SIZE + 1];
-        ssize_t bytes_read = mq_receive(mq, buffer, MQ_MAX_SIZE, NULL);
-        buffer[bytes_read] = '\0';
-        if (bytes_read == EOF) {
+        ssize_t bytesRead = mq_receive(mq, buffer, MQ_MAX_SIZE, NULL);
+        buffer[bytesRead] = '\0';
+        if (bytesRead == EOF) {
             continue;
         }
 
@@ -251,28 +257,28 @@ void FimdImpl::startMessageQueue(const std::string logFormat, const std::string 
             done = true;
         } else {
             fimwatch_event *fwevent = reinterpret_cast<struct fimwatch_event *>(buffer);
-            std::regex proc_regex("/proc/[0-9]+/root");
+            std::regex procRegex("/proc/[0-9]+/root");
 
-            std::string mask_str;
-            if (fwevent->event_mask & IN_ACCESS)             mask_str = "IN_ACCESS";
-            else if (fwevent->event_mask & IN_MODIFY)        mask_str = "IN_MODIFY";
-            else if (fwevent->event_mask & IN_ATTRIB)        mask_str = "IN_ATTRIB";
-            else if (fwevent->event_mask & IN_OPEN)          mask_str = "IN_OPEN";
-            else if (fwevent->event_mask & IN_CLOSE_WRITE)   mask_str = "IN_CLOSE_WRITE";
-            else if (fwevent->event_mask & IN_CLOSE_NOWRITE) mask_str = "IN_CLOSE_NOWRITE";
-            else if (fwevent->event_mask & IN_CREATE)        mask_str = "IN_CREATE";
-            else if (fwevent->event_mask & IN_DELETE)        mask_str = "IN_DELETE";
-            else if (fwevent->event_mask & IN_DELETE_SELF)   mask_str = "IN_DELETE_SELF";
-            else if (fwevent->event_mask & IN_MOVED_FROM)    mask_str = "IN_MOVED_FROM";
-            else if (fwevent->event_mask & IN_MOVED_TO)      mask_str = "IN_MOVED_TO";
-            else if (fwevent->event_mask & IN_MOVE_SELF)     mask_str = "IN_MOVE_SELF";
+            std::string maskStr;
+            if (fwevent->event_mask & IN_ACCESS)             maskStr = "IN_ACCESS";
+            else if (fwevent->event_mask & IN_MODIFY)        maskStr = "IN_MODIFY";
+            else if (fwevent->event_mask & IN_ATTRIB)        maskStr = "IN_ATTRIB";
+            else if (fwevent->event_mask & IN_OPEN)          maskStr = "IN_OPEN";
+            else if (fwevent->event_mask & IN_CLOSE_WRITE)   maskStr = "IN_CLOSE_WRITE";
+            else if (fwevent->event_mask & IN_CLOSE_NOWRITE) maskStr = "IN_CLOSE_NOWRITE";
+            else if (fwevent->event_mask & IN_CREATE)        maskStr = "IN_CREATE";
+            else if (fwevent->event_mask & IN_DELETE)        maskStr = "IN_DELETE";
+            else if (fwevent->event_mask & IN_DELETE_SELF)   maskStr = "IN_DELETE_SELF";
+            else if (fwevent->event_mask & IN_MOVED_FROM)    maskStr = "IN_MOVED_FROM";
+            else if (fwevent->event_mask & IN_MOVED_TO)      maskStr = "IN_MOVED_TO";
+            else if (fwevent->event_mask & IN_MOVE_SELF)     maskStr = "IN_MOVE_SELF";
 
             fmt::memory_buffer out;
             try {
                 fmt::format_to(out, logFormat != "" ? logFormat : FimdImpl::DEFAULT_FORMAT,
-                    fmt::arg("event", mask_str),
+                    fmt::arg("event", maskStr),
                     fmt::arg("ftype", fwevent->is_dir ? "directory" : "file"),
-                    fmt::arg("path", std::regex_replace(fwevent->path_name, proc_regex, "")),
+                    fmt::arg("path", std::regex_replace(fwevent->path_name, procRegex, "")),
                     fmt::arg("file", fwevent->file_name),
                     fmt::arg("sep", fwevent->file_name != "" ? "/" : ""),
                     fmt::arg("pod", podName),
@@ -285,7 +291,7 @@ void FimdImpl::startMessageQueue(const std::string logFormat, const std::string 
     } while (!done);
 
     mq_close(mq);
-    mq_unlink(MQ_QUEUE_NAME);
+    mq_unlink(mqPath.c_str());
 }
 
 void FimdImpl::sendKillSignalToWatcher(std::shared_ptr<fim::FimdHandle> watcher) {
