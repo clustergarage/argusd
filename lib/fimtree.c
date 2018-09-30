@@ -294,29 +294,6 @@ void watch_subtree(struct fimwatch *watch) {
         fflush(stdout);
 #endif
     }
-
-    /*
-    printf("  $$$$ watch subtree:\n");
-    printf("    $$   pid = %d\n", watch->pid);
-    printf("    $$   sid = %d\n", watch->sid);
-    printf("    $$   fd = %d\n", watch->fd);
-    printf("    $$   slot = %d\n", watch->slot);
-    printf("    $$   rootpathc = %d\n", watch->rootpathc);
-    fflush(stdout);
-    for (i = 0; i < watch->rootpathc; ++i) {
-        printf("     $     rootpaths[%d] = %s\n", i, watch->rootpaths[i]);
-        fflush(stdout);
-    }
-    printf("    $$   pathc = %d\n", watch->pathc);
-    for (i = 0; i < watch->pathc; ++i) {
-        printf("     $     paths[%d] = %s; wd = %d\n", i, watch->paths[i], watch->wd[i]);
-        fflush(stdout);
-    }
-    printf("    $$   event_mask = %d\n", watch->event_mask);
-    printf("    $$   only_dir = %d\n", watch->only_dir);
-    printf("    $$   recursive = %d\n", watch->recursive);
-    fflush(stdout);
-    */
 }
 
 /**

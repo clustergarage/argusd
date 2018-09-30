@@ -36,11 +36,9 @@ grpc::Status FimdImpl::CreateWatch(grpc::ServerContext *context, const fim::Fimd
     // inotify_add_watcher is designed to both add and modify depending
     // on if a fd exists already for this path
     auto watcher = findFimdWatcherByPids(request->nodename(), pids);
-    if (watcher == nullptr) {
-        LOG(INFO) << "Starting inotify watcher...";
-    } else {
-        LOG(INFO) << "Updating inotify watcher...";
-
+    LOG(INFO) << (watcher == nullptr ? "Starting" : "Updating") << " inotify watcher ("
+        << request->nodename() << ":" << request->podname() << ")";
+    if (watcher != nullptr) {
         // stop existing watcher polling
         sendKillSignalToWatcher(watcher);
         watcher->clear_processeventfd();
@@ -80,7 +78,7 @@ grpc::Status FimdImpl::DestroyWatch(grpc::ServerContext *context, const fim::Fim
         return grpc::Status::CANCELLED;
     }
 
-    LOG(INFO) << "Stopping inotify watcher...";
+    LOG(INFO) << "Stopping inotify watcher (" << request->nodename() << ":" << request->podname() << ")";
 
     auto watcher = findFimdWatcherByPids(request->nodename(), pids);
     if (watcher != nullptr) {
