@@ -10,6 +10,7 @@
 
 #include "fimd_impl.h"
 #include "fimd_util.h"
+#include "health_impl.h"
 
 #define PORT 50051
 
@@ -24,11 +25,13 @@ int main(int argc, char **argv) {
     std::stringstream ss;
     ss << "0.0.0.0:" << PORT;
     std::string server_address(ss.str());
-    fimd::FimdImpl service;
-
     grpc::ServerBuilder builder;
     builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
-    builder.RegisterService(&service);
+
+    fimd::FimdImpl fimdSvc;
+    builder.RegisterService(&fimdSvc);
+    fimdhealth::HealthImpl healthSvc;
+    builder.RegisterService(&healthSvc);
 
     std::unique_ptr<grpc::Server> server(builder.BuildAndStart());
     LOG(INFO) << "Server listening on " << server_address;

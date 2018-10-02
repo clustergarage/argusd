@@ -167,14 +167,17 @@ include_directories(
 )
 add_subdirectory(lib fim-proto)
 
-set(_FIM_PROTO_SRCS ${PROJECT_SOURCE_DIR}/fim-proto/c++/fim.pb.cc)
-set(_FIM_GRPC_SRCS ${PROJECT_SOURCE_DIR}/fim-proto/c++/fim.grpc.pb.cc)
+set(_FIM_PROTO_SRCS ${PROJECT_SOURCE_DIR}/fim-proto/c++/fim.pb.cc
+  ${PROJECT_SOURCE_DIR}/fim-proto/c++/health.pb.cc)
+set(_FIM_GRPC_SRCS ${PROJECT_SOURCE_DIR}/fim-proto/c++/fim.grpc.pb.cc
+  ${PROJECT_SOURCE_DIR}/fim-proto/c++/health.grpc.pb.cc)
 
 # Targets
 add_executable(fimd
   fimd_server.cc
   fimd_impl.cc
   fimd_util.cc
+  health_impl.cc
   ${_FIM_PROTO_SRCS}
   ${_FIM_GRPC_SRCS}
 )
