@@ -1,7 +1,6 @@
 FROM ubuntu:bionic as builder
 RUN apt-get update && \
-  apt-get install -y git perl tar wget \
-    gcc g++ cmake make
+  apt-get install -y cmake g++ gcc make git perl tar wget
 # do this in a new folder `dockerbuild`; `build` is ignored via .dockerignore
 # for builds outside docker, so we need to make sure we name this something
 # other than `build`
