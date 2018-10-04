@@ -73,14 +73,9 @@ grpc::Status FimdImpl::CreateWatch(grpc::ServerContext *context, const fim::Fimd
 }
 
 grpc::Status FimdImpl::DestroyWatch(grpc::ServerContext *context, const fim::FimdConfig *request, fim::Empty *response) {
-    auto pids = getPidsFromRequest(std::make_shared<fim::FimdConfig>(*request));
-    if (!pids.size()) {
-        return grpc::Status::CANCELLED;
-    }
-
     LOG(INFO) << "Stopping inotify watcher (" << request->podname() << ":" << request->nodename() << ")";
 
-    auto watcher = findFimdWatcherByPids(request->nodename(), pids);
+    auto watcher = findFimdWatcherByPids(request->nodename(), std::vector<int>(request->pid().cbegin(), request->pid().cend()));
     if (watcher != nullptr) {
         // stop existing message queue
         sendExitMessageToMessageQueue(watcher);
@@ -103,8 +98,8 @@ grpc::Status FimdImpl::GetWatchState(grpc::ServerContext *context, const fim::Em
 
 std::vector<int> FimdImpl::getPidsFromRequest(std::shared_ptr<fim::FimdConfig> request) {
     std::vector<int> pids;
-    std::for_each(request->containerid().cbegin(), request->containerid().cend(), [&](const std::string containerId) {
-        int pid = FimdUtil::getPidForContainer(cleanContainerId(containerId));
+    std::for_each(request->cid().cbegin(), request->cid().cend(), [&](const std::string cid) {
+        int pid = FimdUtil::getPidForContainer(cleanContainerId(cid));
         if (pid) {
             pids.push_back(pid);
         }
