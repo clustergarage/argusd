@@ -154,15 +154,21 @@ uint32_t FimdImpl::getEventMaskFromSubject(std::shared_ptr<fim::FimWatcherSubjec
     uint32_t mask = 0;
     std::for_each(subject->event().cbegin(), subject->event().cend(), [&](std::string event) {
         const char *evt = event.c_str();
-        if (strcmp(evt, "all") == 0)         mask |= IN_ALL_EVENTS;
-        else if (strcmp(evt, "access") == 0) mask |= IN_ACCESS;
-        else if (strcmp(evt, "modify") == 0) mask |= IN_MODIFY;
-        else if (strcmp(evt, "attrib") == 0) mask |= IN_ATTRIB;
-        else if (strcmp(evt, "open") == 0)   mask |= IN_OPEN;
-        else if (strcmp(evt, "close") == 0)  mask |= IN_CLOSE;
-        else if (strcmp(evt, "create") == 0) mask |= IN_CREATE;
-        else if (strcmp(evt, "delete") == 0) mask |= IN_DELETE;
-        else if (strcmp(evt, "move") == 0)   mask |= IN_MOVE;
+        if (strcmp(evt, "all") == 0)               mask |= IN_ALL_EVENTS;
+        else if (strcmp(evt, "access") == 0)       mask |= IN_ACCESS;
+        else if (strcmp(evt, "attrib") == 0)       mask |= IN_ATTRIB;
+        else if (strcmp(evt, "closewrite") == 0)   mask |= IN_CLOSE_WRITE;
+        else if (strcmp(evt, "closenowrite") == 0) mask |= IN_CLOSE_NOWRITE;
+        else if (strcmp(evt, "close") == 0)        mask |= IN_CLOSE;
+        else if (strcmp(evt, "create") == 0)       mask |= IN_CREATE;
+        else if (strcmp(evt, "delete") == 0)       mask |= IN_DELETE;
+        else if (strcmp(evt, "deleteself") == 0)   mask |= IN_DELETE_SELF;
+        else if (strcmp(evt, "modify") == 0)       mask |= IN_MODIFY;
+        else if (strcmp(evt, "moveself") == 0)     mask |= IN_MOVE_SELF;
+        else if (strcmp(evt, "movedfrom") == 0)    mask |= IN_MOVED_FROM;
+        else if (strcmp(evt, "movedto") == 0)      mask |= IN_MOVED_TO;
+        else if (strcmp(evt, "move") == 0)         mask |= IN_MOVE;
+        else if (strcmp(evt, "open") == 0)         mask |= IN_OPEN;
     });
     return mask;
 }
@@ -253,18 +259,18 @@ void FimdImpl::startMessageQueue(const std::string logFormat, const std::string 
             std::regex procRegex("/proc/[0-9]+/root");
 
             std::string maskStr;
-            if (fwevent->event_mask & IN_ACCESS)             maskStr = "IN_ACCESS";
-            else if (fwevent->event_mask & IN_MODIFY)        maskStr = "IN_MODIFY";
-            else if (fwevent->event_mask & IN_ATTRIB)        maskStr = "IN_ATTRIB";
-            else if (fwevent->event_mask & IN_OPEN)          maskStr = "IN_OPEN";
-            else if (fwevent->event_mask & IN_CLOSE_WRITE)   maskStr = "IN_CLOSE_WRITE";
-            else if (fwevent->event_mask & IN_CLOSE_NOWRITE) maskStr = "IN_CLOSE_NOWRITE";
-            else if (fwevent->event_mask & IN_CREATE)        maskStr = "IN_CREATE";
-            else if (fwevent->event_mask & IN_DELETE)        maskStr = "IN_DELETE";
-            else if (fwevent->event_mask & IN_DELETE_SELF)   maskStr = "IN_DELETE_SELF";
-            else if (fwevent->event_mask & IN_MOVED_FROM)    maskStr = "IN_MOVED_FROM";
-            else if (fwevent->event_mask & IN_MOVED_TO)      maskStr = "IN_MOVED_TO";
-            else if (fwevent->event_mask & IN_MOVE_SELF)     maskStr = "IN_MOVE_SELF";
+            if (fwevent->event_mask & IN_ACCESS)             maskStr = "ACCESS";
+            else if (fwevent->event_mask & IN_ATTRIB)        maskStr = "ATTRIB";
+            else if (fwevent->event_mask & IN_CLOSE_WRITE)   maskStr = "CLOSE_WRITE";
+            else if (fwevent->event_mask & IN_CLOSE_NOWRITE) maskStr = "CLOSE_NOWRITE";
+            else if (fwevent->event_mask & IN_CREATE)        maskStr = "CREATE";
+            else if (fwevent->event_mask & IN_DELETE)        maskStr = "DELETE";
+            else if (fwevent->event_mask & IN_DELETE_SELF)   maskStr = "DELETE_SELF";
+            else if (fwevent->event_mask & IN_MODIFY)        maskStr = "MODIFY";
+            else if (fwevent->event_mask & IN_MOVE_SELF)     maskStr = "MOVE_SELF";
+            else if (fwevent->event_mask & IN_MOVED_FROM)    maskStr = "MOVED_FROM";
+            else if (fwevent->event_mask & IN_MOVED_TO)      maskStr = "MOVED_TO";
+            else if (fwevent->event_mask & IN_OPEN)          maskStr = "OPEN";
 
             fmt::memory_buffer out;
             try {
