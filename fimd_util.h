@@ -10,6 +10,9 @@ class FimdUtil {
 public:
     static int getPidForContainer(std::string id);
 
+    /**
+     * helper function to erase substring `t` from string `s`
+     */
     static inline std::string eraseSubstr(const std::string &s, const std::string &t) {
         std::string str(s.c_str());
         size_t pos = s.find(t);
@@ -25,6 +28,9 @@ private:
     static std::string getThisCgroup(std::string cgroup_type);
 
 private:
+    /**
+     * helper function to split string `s` by a character deliminator
+     */
     static inline std::vector<std::string> split(const std::string &s, char delim) {
         std::stringstream ss(s);
         std::string item;

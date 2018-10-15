@@ -21,35 +21,27 @@
 extern struct fimwatch *wlcache;
 
 /**
- * when the cache is in an unrecoverable state, we discard the current
- * inotify file descriptor `oldfd` and create a new one (returned
- * as the function result), and remove and rebuild the cache
+ * when the cache is in an unrecoverable state, we discard the current inotify
+ * file descriptor `oldfd` and create a new one (returned as the function
+ * result), and remove and rebuild the cache
  *
- * if `oldfd` is -1, this is the initial build of the cache, or an
- * explicitly requested cache rebuild, so we are a little less verbose,
- * and we reset `reinitc`
+ * if `oldfd` is -1, this is the initial build of the cache, or an explicitly
+ * requested cache rebuild, so we are a little less verbose
  *
- * `mask` can be reinitialized this way
+ * `event_mask` can be reinitialized this way
  */
 static int reinitialize(struct fimwatch *watch) {
-    static int reinitc; // @TODO: is this needed?
     int fd;
     int i, slot;
     bool rebuild = watch->fd != EOF;
 
     if (rebuild) {
         close(watch->fd);
-        ++reinitc;
-#if DEBUG
-        printf("reinitializing cache and inotify fd (reinitc = %d)\n", reinitc);
-        fflush(stdout);
-#endif
     } else {
 #if DEBUG
         printf("initializing cache\n");
         fflush(stdout);
 #endif
-        reinitc = 0;
     }
 
     fd = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
@@ -94,8 +86,8 @@ static int reinitialize(struct fimwatch *watch) {
 #endif
 
     // check cache consistency right away, in case there are multiple
-    // containers in a single pod that don't have a path on the
-    // filesystem that we specified to watch
+    // containers in a single pod that don't have a path on the filesystem that
+    // we specified to watch
     check_cache_consistency(watch);
 
     return fd;
@@ -119,9 +111,8 @@ static size_t process_next_inotify_event(struct fimwatch *watch, char *ptr, int 
 
         if (!(event->mask & IN_IGNORED)) {
             // IN_Q_OVERFLOW has (event->wd == -1)
-            // skip IN_IGNORED, since it will come after an event that has already
-            // removed the corresponding cache entry
-            //
+            // skip IN_IGNORED, since it will come after an event that has
+            // already removed the corresponding cache entry
             // cache consistency check
             // see the discussion of "intra-tree" `rename` events
             slot = find_watch_checked(watch, event->wd);
@@ -149,29 +140,32 @@ static size_t process_next_inotify_event(struct fimwatch *watch, char *ptr, int 
         fflush(stdout);
 #endif
 
-        // we only watch the new subtree if it has not already been cached
-        // this deals with a race condition:
-        // * on the one hand, the following steps might occur:
-        //   1. the "child" directory is created
-        //   2. the "grandchild" directory is created
-        //   3. we receive an IN_CREATE event for the creation of the "child"
-        //      and create a watch and a cache entry for it
-        //   4. to handle the possibility that step 2 came before step 3, we
-        //      recursively walk through the descendants of the "child"
-        //      directory, adding any subdirectories to the cache
-        // * on the other hand, the following steps might occur:
-        //   1. the "child" directory is created
-        //   3. we receive an IN_CREATE event for the creation of the "child"
-        //      and create a watch and a cache entry for it
-        //   3. the "grandchild" directory is created
-        //   4. during the recursive walk through the descendants of the "child"
-        //      directory, we cache the "grandchild" and add a watch for it
-        //   5. we receive the IN_CREATE event for the creation of the
-        //      "grandchild"
-        //      at this point, we should NOT create a cache entry and watch for
-        //      the "grandchild" because they already exist (creating the watch
-        //      for the second time is harmless, but adding a second cache for
-        //      the grandchild would leave the cache in a confused state)
+        /**
+         * we only watch the new subtree if it has not already been cached this
+         * deals with a race condition:
+         * - on the one hand, the following steps might occur:
+         *   1. the "child" directory is created
+         *   2. the "grandchild" directory is created
+         *   3. we receive an IN_CREATE event for the creation of the "child"
+         *      and create a watch and a cache entry for it
+         *   4. to handle the possibility that step 2 came before step 3, we
+         *      recursively walk through the descendants of the "child"
+         *      directory, adding any subdirectories to the cache
+         * - on the other hand, the following steps might occur:
+         *   1. the "child" directory is created
+         *   3. we receive an IN_CREATE event for the creation of the "child"
+         *      and create a watch and a cache entry for it
+         *   3. the "grandchild" directory is created
+         *   4. during the recursive walk through the descendants of the
+         *      "child" directory, we cache the "grandchild" and add a watch
+         *      for it
+         *   5. we receive the IN_CREATE event for the creation of the
+         *      "grandchild"
+         *      at this point, we should NOT create a cache entry and watch for
+         *      the "grandchild" because they already exist (creating the watch
+         *      for the second time is harmless, but adding a second cache for
+         *      the grandchild would leave the cache in a confused state)
+         */
         if (!path_name_to_cache_slot(watch, fullpath) > -1) {
             wdslot = wd_to_cache_slot(watch, event->wd);
             if (wdslot > -1 &&
@@ -179,7 +173,7 @@ static size_t process_next_inotify_event(struct fimwatch *watch, char *ptr, int 
                 watch->recursive) {
                 watch->pathc = 0;
                 watch_subtree(watch);
-                // @TODO: does this work
+                // @TODO: verify that this works
                 wlcache[watch->slot] = *watch;
             }
         }
@@ -196,86 +190,87 @@ static size_t process_next_inotify_event(struct fimwatch *watch, char *ptr, int 
         mark_cache_slot_empty(slot);
         // no need to remove the watch; that happens automatically
     } else if ((event->mask & (IN_MOVED_FROM | IN_ISDIR)) == (IN_MOVED_FROM | IN_ISDIR)) {
-        // we have a "moved from" event
-        // to know how to deal with it, we need to determine whether there is a
-        // following "moved to" event with a matching cookie value (i.e., an
-        // "intra-tree" `rename` where the source and destination are inside
-        // our monitored trees)
-        // if there is not, then we are dealing with a `rename` out of our
-        // monitored tree(s)
-        //
-        // we assume that if this is an "intra-tree" `rename` event, then the
-        // "moved to" event is the next event in the buffer returned by the
-        // current `read`
-        // (if we are already at the last event in this buffer, then we ask our
-        // caller to read a bit more, in the hope of getting the following
-        // IN_MOVED_TO event in the next `read`)
-        //
-        // in most cases, the assumption holds
-        // however, where multiple processes are manipulating the tree, we can
-        // can get event sequences such as the following:
-        //
-        //   IN_MOVED_FROM   (rename(x) by process A)
-        //     IN_MOVED_FROM (rename(y) by process B)
-        //     IN_MOVED_TO   (rename(y) by process B)
-        //   IN_MOVED_TO     (rename(x) by process A)
-        //
-        // in principle, there may be arbitrarily complex variations on the
-        // above theme
-        // our assumption that related IN_MOVED_FROM and IN_MOVED_TO events are
-        // consecutive is broken by such scenarios
-        //
-        // we could try to resolve this issue by extending the window we use to
-        // search for IN_MOVED_TO events beyond the next item in the queue
-        // but this must be done heuristically (e.g., limiting the window to N
-        // events or to events read within X milliseconds), because sometimes
-        // we will have an unmatched IN_MOVED_FROM events that result from
-        // out-of-tree renames
-        // the heuristic approach is therefore unavoidably racy: there is
-        // always a chance that we will fail to match up an IN_MOVED_FROM+
-        // IN_MOVED_TO event pair
-        //
-        // so, this program takes the simple approach of assuming that an
-        // IN_MOVED_FROM+IN_MOVED_TO pair occupy consecutive events in the
-        // buffer returned by `read`
-        //
-        // when that assumption is wrong (and we therefore fail to recognize
-        // an intra-tree `rename` event), then the rename will be treated as
-        // separate "moved from" and "moved to" events, with the result that
-        // some watch items and cache entries are removed and re-created
-        // this causes the watch descriptors in our cache to become
-        // inconsistent with the watch descriptors in as yet unread events,
-        // because the watches are re-created with different watch descriptor
-        // numbers
-        //
-        // once such an inconsistency occurs, then, at some later point, we
-        // will do a lookup for a watch descriptor returned by inotify, and
-        // find that it is not in our cache
-        // when that happens, we reinitialize our cache with a fresh set of
-        // watch descriptors and re-create the inotify file descriptor, in
-        // order to bring our cache back into consistency with the filesystem
-        // an alternative would be to cache the cookies of the (recent)
-        // IN_MOVED_FROM events for which which we did not find a matching
-        // IN_MOVED_TO event, and rebuild our watch cache when we find an
-        // IN_MOVED_TO event whose cookie matches one of the cached cookies
-        // yet another approach when we detect an out-of-tree rename would be
-        // to reinitialize the cache and create a new inotify file descriptor
-        //
-        // (@TODO: consider the fact that for a rename event, there won't be
-        // other events for the object between IN_MOVED_FROM and IN_MOVED_TO)
-        //
-        // rebuilding the watch cache is expensive if the monitored tree is
-        // large
-        // so, there is a trade-off between how much effort we want to go to to
-        // avoid cache rebuilds versus how much effort we want to devote to
-        // matching up IN_MOVED_FROM+IN_MOVED_TO event pairs
-        // at the one extreme we would do no search ahead for IN_MOVED_TO, with
-        // the result that every `rename` potentially could trigger a cache
-        // rebuild
-        // limiting the search window to just the following event is a
-        // compromise that catches the vast majority of intra-tree renames and
-        // triggers relatively few cache rebuilds
-
+        /**
+         * we have a "moved from" event
+         * to know how to deal with it, we need to determine whether there is a
+         * following "moved to" event with a matching cookie value (i.e., an
+         * "intra-tree" `rename` where the source and destination are inside
+         * our monitored trees)
+         * if there is not, then we are dealing with a `rename` out of our
+         * monitored tree(s)
+         *
+         * we assume that if this is an "intra-tree" `rename` event, then the
+         * "moved to" event is the next event in the buffer returned by the
+         * current `read`
+         * (if we are already at the last event in this buffer, then we ask our
+         * caller to read a bit more, in the hope of getting the following
+         * IN_MOVED_TO event in the next `read`)
+         *
+         * in most cases, the assumption holds
+         * however, where multiple processes are manipulating the tree, we can
+         * can get event sequences such as the following:
+         *
+         *   IN_MOVED_FROM   (rename(x) by process A)
+         *     IN_MOVED_FROM (rename(y) by process B)
+         *     IN_MOVED_TO   (rename(y) by process B)
+         *   IN_MOVED_TO     (rename(x) by process A)
+         *
+         * in principle, there may be arbitrarily complex variations on the
+         * above theme
+         * our assumption that related IN_MOVED_FROM and IN_MOVED_TO events are
+         * consecutive is broken by such scenarios
+         *
+         * we could try to resolve this issue by extending the window we use to
+         * search for IN_MOVED_TO events beyond the next item in the queue
+         * but this must be done heuristically (e.g., limiting the window to N
+         * events or to events read within X milliseconds), because sometimes
+         * we will have an unmatched IN_MOVED_FROM events that result from
+         * out-of-tree renames
+         * the heuristic approach is therefore unavoidably racy: there is
+         * always a chance that we will fail to match up an IN_MOVED_FROM+
+         * IN_MOVED_TO event pair
+         *
+         * so, this program takes the simple approach of assuming that an
+         * IN_MOVED_FROM+IN_MOVED_TO pair occupy consecutive events in the
+         * buffer returned by `read`
+         *
+         * when that assumption is wrong (and we therefore fail to recognize
+         * an intra-tree `rename` event), then the rename will be treated as
+         * separate "moved from" and "moved to" events, with the result that
+         * some watch items and cache entries are removed and re-created
+         * this causes the watch descriptors in our cache to become
+         * inconsistent with the watch descriptors in as yet unread events,
+         * because the watches are re-created with different watch descriptor
+         * numbers
+         *
+         * once such an inconsistency occurs, then, at some later point, we
+         * will do a lookup for a watch descriptor returned by inotify, and
+         * find that it is not in our cache
+         * when that happens, we reinitialize our cache with a fresh set of
+         * watch descriptors and re-create the inotify file descriptor, in
+         * order to bring our cache back into consistency with the filesystem
+         * an alternative would be to cache the cookies of the (recent)
+         * IN_MOVED_FROM events for which which we did not find a matching
+         * IN_MOVED_TO event, and rebuild our watch cache when we find an
+         * IN_MOVED_TO event whose cookie matches one of the cached cookies
+         * yet another approach when we detect an out-of-tree rename would be
+         * to reinitialize the cache and create a new inotify file descriptor
+         *
+         * (@TODO: consider the fact that for a rename event, there won't be
+         * other events for the object between IN_MOVED_FROM and IN_MOVED_TO)
+         *
+         * rebuilding the watch cache is expensive if the monitored tree is
+         * large
+         * so, there is a trade-off between how much effort we want to go to to
+         * avoid cache rebuilds versus how much effort we want to devote to
+         * matching up IN_MOVED_FROM+IN_MOVED_TO event pairs
+         * at the one extreme we would do no search ahead for IN_MOVED_TO, with
+         * the result that every `rename` potentially could trigger a cache
+         * rebuild
+         * limiting the search window to just the following event is a
+         * compromise that catches the vast majority of intra-tree renames and
+         * triggers relatively few cache rebuilds
+         */
         const struct inotify_event *nextevent = (const struct inotify_event *)(ptr + evtlen);
 
         if (((char *)nextevent < ptr + len) &&
@@ -300,7 +295,8 @@ static size_t process_next_inotify_event(struct fimwatch *watch, char *ptr, int 
             // also processed the next (IN_MOVED_TO) event, so skip over it
             evtlen += sizeof(struct inotify_event) + nextevent->len;
         } else if (((char *)nextevent < ptr + len) || !first) {
-            // got a "moved from" event without an accompanying "moved to" event
+            // got a "moved from" event without an accompanying "moved to"
+            // event
             // the directory has been moved outside the tree we are monitoring
             // need to remove the watches and remove the cache entries for the
             // moved directory and all of its subdirectories
@@ -328,13 +324,6 @@ static size_t process_next_inotify_event(struct fimwatch *watch, char *ptr, int 
             return -1;
         }
     } else if (event->mask & IN_Q_OVERFLOW) {
-        static int overflowc = 0; // @TODO: is this needed?
-        ++overflowc;
-#if DEBUG
-        printf("queue overflow (%d) (inotifyreadc = %d)\n", overflowc, inotifyreadc);
-        fflush(stdout);
-#endif
-
         // when the queue overflows, some events are lost, at which point we've
         // lost any chance of keeping our cache consistent with the state of
         // the filesystem
@@ -406,7 +395,7 @@ sendevent: ; // hack to get past label syntax error
     fflush(stdout);
 #endif
 
-    // @TODO: document this
+    // send new event to the calling process via mqueue
     if (mq_send(watch->mq, (const char *)&fwevent, sizeof(fwevent), 0) == EOF) {
 #if DEBUG
         perror("mq_send");
@@ -431,6 +420,22 @@ static void process_inotify_events(struct fimwatch *watch) {
     int i, evtlen, slot;
     bool first = true;
     char *ptr;
+    struct sigaction sa;
+
+    void alarm_handler(int sig) {
+        // just interrupt `read`
+        return;
+    }
+    // SIGALRM handler is designed simply to interrupt `read`
+    sigemptyset(&sa.sa_mask);
+    sa.sa_handler = alarm_handler;
+    sa.sa_flags = 0;
+    if (sigaction(SIGALRM, &sa, NULL) == EOF) {
+#if DEBUG
+        perror("sigaction");
+#endif
+        return;
+    }
 
     len = read(watch->fd, buf, INOTIFY_READ_BUF_LEN);
     if (len == EOF) {
@@ -445,10 +450,8 @@ static void process_inotify_events(struct fimwatch *watch) {
         return;
     }
 
-    ++inotifyreadc;
-
-    // process each event in the buffer returned by `read`
-    // loop over all events in the buffer
+    // process each event in the buffer returned by `read` loop over all events
+    // in the buffer
     for (ptr = buf; ptr < buf + len; /*ptr += sizeof(struct inotify_event) + event->len*/) {
         evtlen = process_next_inotify_event(watch, ptr, buf + len - ptr, first);
 
@@ -506,7 +509,6 @@ static void process_inotify_events(struct fimwatch *watch) {
 
             if (errno != -1) {
                 len += nr;
-                ++inotifyreadc;
             } else {
                 // EINTR
             }
@@ -518,6 +520,7 @@ static void process_inotify_events(struct fimwatch *watch) {
 
 int start_inotify_watcher(const int pid, const int sid, int pathc, char *paths[], int ignorec, char *ignores[],
     uint32_t mask, bool only_dir, bool recursive, int max_depth, int processevtfd, mqd_t mq) {
+
     int fd, pollc;
     nfds_t nfds;
     struct pollfd fds[2];
@@ -525,7 +528,10 @@ int start_inotify_watcher(const int pid, const int sid, int pathc, char *paths[]
     sigemptyset(&sigmask);
     sigaddset(&sigmask, SIGCHLD);
 
-    // @TODO: document this
+    // to keep this function idempotent we need to handle both existing
+    // fimwatch configuration updates as well as new ones
+    // `inotify_add_watch` will also handle updates properly if a wd exists for
+    // the supplied path
     struct fimwatch watch;
     int slot = find_cached_slot(pid, sid);
     if (slot > -1) {

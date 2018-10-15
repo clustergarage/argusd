@@ -9,8 +9,8 @@
 #define ALLOC_INC 128
 #endif
 
-int find_cached_slot(const int pid, const int sid);
 void free_cache(struct fimwatch *cache);
+int find_cached_slot(const int pid, const int sid);
 void check_cache_consistency(const struct fimwatch *watch);
 void remove_item_from_cache(struct fimwatch *watch, const int index);
 int find_watch(const struct fimwatch *watch, const int wd);

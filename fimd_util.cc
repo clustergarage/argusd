@@ -7,9 +7,17 @@
 #include <vector>
 
 namespace fimd {
-// @TODO: document this
+/**
+ * find the process ID given a container ID
+ * do this through various lookup attempts on a cgroup
+ * based on docker/utils/utils.go converted to C++ and modified over time
+ * modified to glob with id
+ * modified to search for newer docker containers
+ * modified to search for newer kubernetes+docker versions
+ */
 int FimdUtil::getPidForContainer(std::string id) {
     int pid = 0;
+    // memory cgroup is chosen randomly; any cgroup used by docker works
     std::string cgroupType = "memory";
     std::string cgroupRoot = findCgroupMountpoint(cgroupType);
     std::string cgroupThis = getThisCgroup(cgroupType);
@@ -26,7 +34,11 @@ int FimdUtil::getPidForContainer(std::string id) {
         // even more recent docker versions under cgroup/systemd/docker/<id>/
         cgroupRoot + "/../systemd/docker/" + id + "/tasks",
         // kubernetes with docker and CNI is even more different
-        cgroupRoot + "/../systemd/kubepods/*/pod*/" + id + "/tasks"
+        cgroupRoot + "/../systemd/kubepods/*/pod*/" + id + "/tasks",
+        // another flavor of containers location in recent kubernetes 1.11+
+        cgroupRoot + cgroupThis + "/kubepods.slice/kubepods-besteffort.slice/*/docker-" + id + ".scope/tasks",
+        // when running inside of a container with recent kubernetes 1.11+
+        cgroupRoot + "/kubepods.slice/kubepods-besteffort.slice/*/docker-" + id + ".scope/tasks"
     };
 
     for (auto it = attempts.begin(); it != attempts.end(); ++it) {
@@ -41,6 +53,10 @@ int FimdUtil::getPidForContainer(std::string id) {
     return pid;
 }
 
+/**
+ * perform a file glob check
+ * takes `pattern` string and returns result of matches on this glob
+ */
 std::vector<std::string> FimdUtil::fglob(const std::string &pattern) {
     std::vector<std::string> filenames;
     glob_t globResult;
@@ -54,6 +70,9 @@ std::vector<std::string> FimdUtil::fglob(const std::string &pattern) {
     return filenames;
 }
 
+/**
+ * returns the path to the cgroup mountpoint
+ */
 std::string FimdUtil::findCgroupMountpoint(std::string cgroupType) {
     std::ifstream output("/proc/mounts");
     std::string line;
@@ -73,7 +92,9 @@ std::string FimdUtil::findCgroupMountpoint(std::string cgroupType) {
     }
 }
 
-// returns the relative path to the cgroup docker is running in
+/**
+ * returns the relative path to the cgroup docker is running in
+ */
 std::string FimdUtil::getThisCgroup(std::string cgroupType) {
     std::ifstream dockerpid("/var/run/docker.pid");
     std::string line;

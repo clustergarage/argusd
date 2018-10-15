@@ -33,6 +33,10 @@ private:
     void eraseEventProcessfd(google::protobuf::RepeatedField<google::protobuf::int32> *eventProcessfds, const int processfd);
     void sendExitMessageToMessageQueue(std::shared_ptr<fim::FimdHandle> watcher);
 
+    /**
+     * helper function to remove prepended container protocol from `containerId`
+     * currently only handles docker, but can be extended later for rkt, cri-o, etc.
+     */
     inline const std::string cleanContainerId(const std::string &containerId) const {
         return FimdUtil::eraseSubstr(containerId, "docker://");
     }

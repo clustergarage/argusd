@@ -12,6 +12,22 @@
 
 extern struct fimwatch *wlcache;
 
+/**
+ * deallocate the watch cache
+ */
+void free_cache(struct fimwatch *watch) {
+    if (watch->slot == -1) {
+        return;
+    }
+    // free up dynamically-allocated memory for `wd` and `paths` arrays
+    free(watch->wd);
+    free(watch->paths);
+    mark_cache_slot_empty(watch->slot);
+}
+
+/**
+ * find the position in the `wlcache` given a `pid` and `sid`
+ */
 int find_cached_slot(const int pid, const int sid) {
     int i;
     for (i = 0; i < wlcachec; ++i) {
@@ -21,19 +37,6 @@ int find_cached_slot(const int pid, const int sid) {
         }
     }
     return -1;
-}
-
-/**
- * deallocate the watch cache
- */
-void free_cache(struct fimwatch *watch) {
-    if (watch->slot == -1) {
-        return;
-    }
-    // @TODO: document this
-    free(watch->wd);
-    free(watch->paths);
-    mark_cache_slot_empty(watch->slot);
 }
 
 /**
@@ -58,7 +61,8 @@ void check_cache_consistency(const struct fimwatch *watch) {
             if (watch->only_dir &&
                 !S_ISDIR(sb.st_mode)) {
 #if DEBUG
-                fprintf(stderr, "check_cache_consistency: %s is not a directory\n", wlcache[i].paths[j]);
+                fprintf(stderr, "check_cache_consistency: %s is not a directory\n",
+                    wlcache[i].paths[j]);
 #endif
                 remove_item_from_cache(&wlcache[i], j);
                 continue;
@@ -67,6 +71,12 @@ void check_cache_consistency(const struct fimwatch *watch) {
     }
 }
 
+/**
+ * when checking cache consistency, remove an item at `index` in a given
+ * fimwatch object
+ * this just moves the `wd` and `paths` position in the watch object, doesn't
+ * deallocate any memory or remove the item itself from the `wlcache`
+ */
 void remove_item_from_cache(struct fimwatch *watch, int const index) {
     int i;
     for (i = index; i < watch->pathc - 1; ++i) {
@@ -165,8 +175,8 @@ void add_watch_to_cache(struct fimwatch *watch) {
 }
 
 /**
- * return the cache slot that corresponds to a particular path name
- * or -1 if the path is not in the cache
+ * return the cache slot that corresponds to a particular path name or -1 if
+ * the path is not in the cache
  */
 int path_name_to_cache_slot(const struct fimwatch *watch, const char *path) {
     int i;
@@ -182,6 +192,10 @@ int path_name_to_cache_slot(const struct fimwatch *watch, const char *path) {
     return -1;
 }
 
+/**
+ * return the pathname that corresponds to the watch descriptor `wd` or blank
+ * string if the watch descriptor is not in the cache
+ */
 char *wd_to_path_name(const struct fimwatch *watch, const int wd) {
     int i;
     for (i = 0; i < watch->pathc; ++i) {
@@ -192,6 +206,10 @@ char *wd_to_path_name(const struct fimwatch *watch, const int wd) {
     return "";
 }
 
+/**
+ * return the cache slot that corresponds to the watch descriptor `wd` or -1 if
+ * the watch descriptor is not in the cache
+ */
 int wd_to_cache_slot(const struct fimwatch *watch, const int wd) {
     int i;
     if (watch->slot == -1) {

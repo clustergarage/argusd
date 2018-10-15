@@ -67,7 +67,8 @@ void copy_root_paths(struct fimwatch *watch) {
             if (watch->rootstat[i].st_ino == watch->rootstat[j].st_ino &&
                 watch->rootstat[i].st_dev == watch->rootstat[j].st_dev) {
 #if DEBUG
-                fprintf(stderr, "duplicate filesystem objects: %s, %s\n", watch->rootpaths[i], watch->rootpaths[j]);
+                fprintf(stderr, "duplicate filesystem objects: %s, %s\n",
+                    watch->rootpaths[i], watch->rootpaths[j]);
                 continue;
 #endif
             }
@@ -94,7 +95,7 @@ char **find_root_path(const struct fimwatch *watch, const char *path) {
 
 /**
  * ceased to monitor a root path name (probably because it was renamed)
- * so remove this path from the root path list
+ * remove this path from the root path list
  */
 void remove_root_path(struct fimwatch *watch, const char *path) {
     char **p = find_root_path(watch, path);
@@ -120,6 +121,11 @@ void remove_root_path(struct fimwatch *watch, const char *path) {
     }
 }
 
+/**
+ * check if we should ignore path in the recursive tree check
+ * if watching for only directories and path is a file, ignore
+ * if `ignore` list is provided and matches this path, ignore
+ */
 bool should_ignore_path(struct fimwatch *watch, const char *path) {
     struct stat sb;
     int i;
@@ -153,7 +159,7 @@ bool should_ignore_path(struct fimwatch *watch, const char *path) {
 }
 
 /**
- * add `path` to the watch list of the inotify file descriptor `ifd`
+ * add `path` to the watch list of the inotify file descriptor
  * the process is not recursive
  * returns number of watches/cache entries added for this subtree
  */
@@ -166,7 +172,6 @@ int watch_path(struct fimwatch *watch, const char *path) {
         return 0;
     }
 
-    // @TODO: follow symlinks properly
     // we need to watch certain events at all times for keeping a consistent
     // view of the filesystem tree
     uint32_t flags = IN_CREATE | IN_MOVED_FROM | IN_MOVED_TO | IN_DELETE_SELF;
@@ -200,7 +205,6 @@ int watch_path(struct fimwatch *watch, const char *path) {
         // this watch descriptor is already in the cache
         printf("wd: %d already in cache (%s)\n", wd, path);
         fflush(stdout);
-        //return 0;
     }
 #endif
 
@@ -226,7 +230,7 @@ int watch_path(struct fimwatch *watch, const char *path) {
 }
 
 /**
- * add `path` to the watch list of the inotify file descriptor `ifd`
+ * add `path` to the watch list of the inotify file descriptor
  * the process is recursive: watch items are also created for all of the
  * subdirectories of `path`
  * returns number of watches/cache entries added for this subtree
@@ -235,8 +239,8 @@ int watch_path_recursive(struct fimwatch *watch, const char *path) {
     /**
      * function called by `nftw` to traverse a directory tree that adds a watch
      * for each directory in the tree
-     * each successful call to this function should return 0 to indicate to `nftw`
-     * that the tree traversal should continue
+     * each successful call to this function should return 0 to indicate to
+     * `nftw` that the tree traversal should continue
      */
     int traverse_tree(const char *path, const struct stat *sb, int tflag, struct FTW *ftwbuf) {
         int i;
@@ -245,17 +249,17 @@ int watch_path_recursive(struct fimwatch *watch, const char *path) {
             // ignore nondirectory files
             return FTW_CONTINUE;
         }
-		// stop recursing subtree if path in ignores list
+        // stop recursing subtree if path in ignores list
         for (i = 0; i < watch->ignorec; ++i) {
             if (strcmp(&path[ftwbuf->base], watch->ignores[i]) == 0) {
                 return FTW_SKIP_SUBTREE;
             }
         }
-		// stop recursing siblings if reached max depth
-		if (watch->max_depth &&
-			ftwbuf->level + 1 > watch->max_depth) {
-			return FTW_SKIP_SIBLINGS;
-		}
+        // stop recursing siblings if reached max depth
+        if (watch->max_depth &&
+            ftwbuf->level + 1 > watch->max_depth) {
+            return FTW_SKIP_SIBLINGS;
+        }
 
 #if DEBUG
         printf("    traverse_tree: %s; level = %d\n", path, ftwbuf->level);
@@ -270,7 +274,8 @@ int watch_path_recursive(struct fimwatch *watch, const char *path) {
     // so we log errors from `nftw`, but keep on going
     if (nftw(path, traverse_tree, 20, FTW_ACTIONRETVAL | FTW_PHYS) == EOF) {
 #if DEBUG
-        printf("nftw: %s: %s (directory probably deleted before we could watch)\n", path, strerror(errno));
+        printf("nftw: %s: %s (directory probably deleted before we could watch)\n",
+            path, strerror(errno));
         fflush(stdout);
 #endif
     }
@@ -290,19 +295,21 @@ void watch_subtree(struct fimwatch *watch) {
             watch_path(watch, watch->rootpaths[i]);
         }
 #if DEBUG
-        printf("  watch_subtree: %s: %d entries added\n", watch->rootpaths[i], watch->pathc);
+        printf("  watch_subtree: %s: %d entries added\n",
+            watch->rootpaths[i], watch->pathc);
         fflush(stdout);
 #endif
     }
 }
 
 /**
- * the directory `oldpathpf`/`oldname` was renamed to
- * `newpathpf`/`newname` fix up cache entries for
- * `oldpathpf`/`oldname` and all of its subdirectories to reflect
- * the change
+ * the directory `oldpathpf`/`oldname` was renamed to `newpathpf`/`newname`
+ * fix up cache entries for `oldpathpf`/`oldname` and all of its subdirectories
+ * to reflect the change
  */
-void rewrite_cached_paths(const struct fimwatch *watch, const char *oldpathpf, const char *oldname, const char *newpathpf, const char *newname) {
+void rewrite_cached_paths(const struct fimwatch *watch, const char *oldpathpf, const char *oldname,
+    const char *newpathpf, const char *newname) {
+
     char fullpath[PATH_MAX], newpf[PATH_MAX], newpath[PATH_MAX];
     size_t len;
     int i, j;
@@ -382,8 +389,7 @@ int remove_subtree(const struct fimwatch *watch, char *path) {
 
                         // when we have multiple renamers, sometimes
                         // `inotify_rm_watch` fails
-                        // in this case, we force a cache rebuild by returning -1
-                        // @TODO: is there a better solution?
+                        // in this case, force a cache rebuild by returning -1
                         cnt = -1;
                         break;
                     }
