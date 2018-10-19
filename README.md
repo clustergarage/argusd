@@ -1,6 +1,6 @@
 # fimd
 
-[![Docker Automated build](https://img.shields.io/docker/automated/clustergarage/fimd.svg?style=flat-square)](https://hub.docker.com/r/clustergarage/fimd)
+[![Docker Automated build](https://img.shields.io/docker/build/clustergarage/fimd.svg?style=flat-square)](https://hub.docker.com/r/clustergarage/fimd)
 
 This repository implements a daemon process responsible for maintaining a collection of `inotify`-style listeners defined by the user to gain insights into when certain key events happen at the filesystem level of their container.
 

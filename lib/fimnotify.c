@@ -44,7 +44,7 @@ static int reinitialize(struct fimwatch *watch) {
 #endif
     }
 
-    fd = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
+    fd = inotify_init1(IN_NONBLOCK | IN_CLOEXEC | O_NONBLOCK);
     if (fd == EOF) {
 #if DEBUG
         perror("inotify_init1");
