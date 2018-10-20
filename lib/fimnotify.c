@@ -344,8 +344,8 @@ static size_t process_next_inotify_event(struct fimwatch *watch, char *ptr, int 
         printf("filesystem unmounted: %s\n", path);
         fflush(stdout);
 #endif
-        mark_cache_slot_empty(slot);
         send_watcher_kill_signal(watch->processevtfd);
+        mark_cache_slot_empty(slot);
         // no need to remove the watch; that happens automatically
     } else if (event->mask & IN_MOVE_SELF &&
         find_root_path(watch, path) != NULL) {

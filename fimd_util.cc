@@ -90,6 +90,7 @@ std::string FimdUtil::findCgroupMountpoint(std::string cgroupType) {
             }
         }
     }
+    return "";
 }
 
 /**
@@ -111,5 +112,6 @@ std::string FimdUtil::getThisCgroup(std::string cgroupType) {
             return results[2];
         }
     }
+    return "";
 }
 } // namespace fimd

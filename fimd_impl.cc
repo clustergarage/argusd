@@ -236,7 +236,7 @@ void FimdImpl::createInotifyWatcher(std::shared_ptr<fim::FimWatcherSubject> subj
     google::protobuf::RepeatedField<google::protobuf::int32> *eventProcessfds, const mqd_t mq) {
 
     // create anonymous pipe to communicate with inotify watcher
-    int processfd = eventfd(0, EFD_CLOEXEC);
+    const int processfd = eventfd(0, EFD_CLOEXEC);
     if (processfd == EOF) {
         return;
     }
@@ -255,7 +255,7 @@ void FimdImpl::createInotifyWatcher(std::shared_ptr<fim::FimWatcherSubject> subj
     // when this result comes back, if it's in error state, we do any necessary
     // cleanup here, such as destroy our anonymous pipe into the fimnotify
     // poller
-    std::thread cleanupThread([&](std::shared_future<int> res) {
+    std::thread cleanupThread([=](std::shared_future<int> res) {
         std::future_status status;
         do {
             status = res.wait_for(std::chrono::seconds(1));
@@ -384,6 +384,9 @@ void FimdImpl::sendKillSignalToWatcher(std::shared_ptr<fim::FimdHandle> watcher)
  * and removes it from the stored collection of pipes
  */
 void FimdImpl::eraseEventProcessfd(google::protobuf::RepeatedField<google::protobuf::int32> *eventProcessfds, const int processfd) {
+    if (!eventProcessfds->size()) {
+        return;
+    }
     for (auto it = eventProcessfds->cbegin(); it != eventProcessfds->cend(); ++it) {
         if (*it == processfd) {
             eventProcessfds->erase(it);
