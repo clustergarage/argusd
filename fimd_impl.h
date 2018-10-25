@@ -35,10 +35,10 @@ private:
 
     /**
      * helper function to remove prepended container protocol from `containerId`
-     * currently only handles docker, but can be extended later for rkt, cri-o, etc.
+     * given a prefix; currently docker,cri-o,rkt,containerd
      */
-    inline const std::string cleanContainerId(const std::string &containerId) const {
-        return FimdUtil::eraseSubstr(containerId, "docker://");
+    inline const std::string cleanContainerId(const std::string &containerId, const std::string prefix) const {
+        return FimdUtil::eraseSubstr(containerId, prefix + "://");
     }
 
     static std::string DEFAULT_FORMAT;

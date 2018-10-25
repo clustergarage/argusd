@@ -8,7 +8,8 @@
 namespace fimd {
 class FimdUtil {
 public:
-    static int getPidForContainer(std::string id);
+    static std::string findContainerRuntime(const std::string containerId);
+    static int getPidForContainer(std::string id, const std::string runtime);
 
     /**
      * helper function to erase substring `t` from string `s`
@@ -24,8 +25,8 @@ public:
 
 private:
     static std::vector<std::string> fglob(const std::string &pattern);
-    static std::string findCgroupMountpoint(std::string cgroup_type);
-    static std::string getThisCgroup(std::string cgroup_type);
+    static std::string findCgroupMountpoint(const std::string cgroupType);
+    static std::string getThisCgroup(const std::string cgroupType, const std::string runtime);
 
 private:
     /**

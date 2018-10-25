@@ -130,7 +130,8 @@ grpc::Status FimdImpl::GetWatchState(grpc::ServerContext *context, const fim::Em
 std::vector<int> FimdImpl::getPidsFromRequest(std::shared_ptr<fim::FimdConfig> request) {
     std::vector<int> pids;
     std::for_each(request->cid().cbegin(), request->cid().cend(), [&](const std::string cid) {
-        int pid = FimdUtil::getPidForContainer(cleanContainerId(cid));
+        std::string runtime = FimdUtil::findContainerRuntime(cid);
+        int pid = FimdUtil::getPidForContainer(cleanContainerId(cid, runtime), runtime);
         if (pid) {
             pids.push_back(pid);
         }
