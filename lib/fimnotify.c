@@ -383,6 +383,8 @@ static size_t process_next_inotify_event(struct fimwatch *watch, char *ptr, int 
 
 sendevent: ; // hack to get past label syntax error
     struct fimwatch_event fwevent = {
+        .pid = watch->pid,
+        .sid = watch->sid,
         .event_mask = event->mask,
         .path_name = path,                          // name of the watched directory
         .file_name = event->len ? event->name : "", // name of the file

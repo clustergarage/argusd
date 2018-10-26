@@ -32,9 +32,10 @@ namespace fimd {
  *   path     name of the directory path
  *   file     name of the file
  *   ftype    evaluates to "file" or "directory"
+ *   tags     list of custom tags in key=value comma-separated list
  *   sep      placeholder for a "/" character (e.g. between path/file)
  */
-std::string FimdImpl::DEFAULT_FORMAT = "{event} {ftype} '{path}{sep}{file}' ({pod}:{node})";
+std::string FimdImpl::DEFAULT_FORMAT = "{event} {ftype} '{path}{sep}{file}' ({pod}:{node}) {tags}";
 
 /**
  * CreateWatch is responsible for creating (or updating) a fim watcher
@@ -65,7 +66,7 @@ grpc::Status FimdImpl::CreateWatch(grpc::ServerContext *context, const fim::Fimd
     response->set_nodename(request->nodename().c_str());
     response->set_podname(request->podname().c_str());
     response->set_mqfd(static_cast<google::protobuf::int32>(createMessageQueue(request->logformat(),
-        request->nodename(), request->podname(), (watcher != nullptr ? response->mqfd() : EOF))));
+        request->nodename(), request->podname(), request->subject(), (watcher != nullptr ? response->mqfd() : EOF))));
 
     for_each(pids.cbegin(), pids.cend(), [&](const int pid) {
         int i = 0;
@@ -181,7 +182,7 @@ char **FimdImpl::getPathArrayFromSubject(const int pid, std::shared_ptr<fim::Fim
 }
 
 /**
- * returns array of char buffer paths to ignore given a lits of subjects
+ * returns array of char buffer paths to ignore given a list of subjects
  * when doing a recursive watch, if ignore paths are provided that match a
  * specific path it will be skipped, including all its children
  */
@@ -194,6 +195,20 @@ char **FimdImpl::getPathArrayFromIgnore(std::shared_ptr<fim::FimWatcherSubject> 
         ++i;
     });
     return patharr;
+}
+
+/**
+ * returns a comma-separated list of key=value pairs for a subject tag map
+ */
+std::string FimdImpl::getTagListFromSubject(std::shared_ptr<fim::FimWatcherSubject> subject) {
+    std::string tags;
+    for (auto tag : subject->tags()) {
+        if (tags != "") {
+            tags += ",";
+        }
+        tags += tag.first + "=" + tag.second;
+    }
+    return tags;
 }
 
 /**
@@ -275,7 +290,9 @@ void FimdImpl::createInotifyWatcher(std::shared_ptr<fim::FimWatcherSubject> subj
  * descriptor that the fimnotify process will add events that need to be logged
  * out here
  */
-mqd_t FimdImpl::createMessageQueue(const std::string logFormat, const std::string nodeName, const std::string podName, mqd_t mq) {
+mqd_t FimdImpl::createMessageQueue(const std::string logFormat, const std::string nodeName, const std::string podName,
+    const google::protobuf::RepeatedPtrField<fim::FimWatcherSubject> subjects, mqd_t mq) {
+
     std::stringstream ss;
     ss << MQ_QUEUE_NAME << "-" << podName;
     std::string mqPath = ss.str();
@@ -302,8 +319,9 @@ mqd_t FimdImpl::createMessageQueue(const std::string logFormat, const std::strin
     }
 
     // start message queue
-    std::packaged_task<void(const std::string, const std::string, const std::string, const mqd_t, const std::string)> queue(startMessageQueue);
-    std::thread queueThread(move(queue), logFormat, nodeName, podName, mq, mqPath);
+    std::packaged_task<void(const std::string, const std::string, const std::string, const google::protobuf::RepeatedPtrField<fim::FimWatcherSubject>,
+        const mqd_t, const std::string)> queue(startMessageQueue);
+    std::thread queueThread(move(queue), logFormat, nodeName, podName, subjects, mq, mqPath);
     // start as daemon process
     queueThread.detach();
 
@@ -317,7 +335,7 @@ mqd_t FimdImpl::createMessageQueue(const std::string logFormat, const std::strin
  * custom logging format can be applied to be processed here
  */
 void FimdImpl::startMessageQueue(const std::string logFormat, const std::string nodeName, const std::string podName,
-    const mqd_t mq, const std::string mqPath) {
+    const google::protobuf::RepeatedPtrField<fim::FimWatcherSubject> subjects, const mqd_t mq, const std::string mqPath) {
 
     bool done = false;
     do {
@@ -348,6 +366,8 @@ void FimdImpl::startMessageQueue(const std::string logFormat, const std::string 
             else if (fwevent->event_mask & IN_MOVED_TO)      maskStr = "MOVED_TO";
             else if (fwevent->event_mask & IN_OPEN)          maskStr = "OPEN";
 
+            const std::shared_ptr<fim::FimWatcherSubject> subject = std::make_shared<fim::FimWatcherSubject>(subjects.Get(fwevent->sid));
+
             fmt::memory_buffer out;
             try {
                 fmt::format_to(out, logFormat != "" ? logFormat : FimdImpl::DEFAULT_FORMAT,
@@ -357,7 +377,8 @@ void FimdImpl::startMessageQueue(const std::string logFormat, const std::string 
                     fmt::arg("file", fwevent->file_name),
                     fmt::arg("sep", fwevent->file_name != "" ? "/" : ""),
                     fmt::arg("pod", podName),
-                    fmt::arg("node", nodeName));
+                    fmt::arg("node", nodeName),
+                    fmt::arg("tags", subject != nullptr ? getTagListFromSubject(subject) : ""));
                 LOG(INFO) << fmt::to_string(out);
             } catch(const std::exception &e) {
                 LOG(WARNING) << "Malformed FimWatcher `.spec.logFormat`: \"" << e.what() << "\"";
