@@ -22,4 +22,4 @@ COPY --from=builder /opt/fimd/dockerbuild/fimd /
 COPY --from=builder /bin/grpc_health_probe /bin/
 # glog requires /tmp to exist as log_dir is /tmp by default
 COPY --from=builder /tmp /tmp
-CMD ["/fimd"]
+CMD ["/fimd", "-insecure"]

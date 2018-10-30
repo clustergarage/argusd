@@ -37,7 +37,7 @@ ExternalProject_Add(zlib
 ExternalProject_Add(openssl
   PREFIX openssl
   GIT_REPOSITORY https://github.com/openssl/openssl
-  GIT_TAG OpenSSL_1_1_0
+  GIT_TAG OpenSSL_1_1_1
   BUILD_IN_SOURCE 1
   CONFIGURE_COMMAND ./config
     --prefix=${CMAKE_CURRENT_BINARY_DIR}/openssl
@@ -107,7 +107,7 @@ ExternalProject_Add(grpc
   PREFIX grpc
   DEPENDS c-ares openssl protobuf zlib
   GIT_REPOSITORY https://github.com/grpc/grpc
-  GIT_TAG v1.14.2
+  GIT_TAG v1.16.0
   CMAKE_CACHE_ARGS
     -DgRPC_BUILD_TESTS:BOOL=OFF
     -DgRPC_BUILD_CSHARP_EXT:BOOL=OFF
@@ -151,13 +151,15 @@ ExternalProject_Add(fmt
 set(_CARES_LIBCARES ${CMAKE_CURRENT_BINARY_DIR}/c-ares/lib/libcares.a)
 set(_ZLIB_LIBZLIB ${CMAKE_CURRENT_BINARY_DIR}/zlib/lib/libz.a)
 set(_PROTOBUF_LIBPROTOBUF ${CMAKE_CURRENT_BINARY_DIR}/protobuf/lib/libprotobuf.a)
+set(_OPENSSL_LIBOPENSSL ${CMAKE_CURRENT_BINARY_DIR}/openssl/lib/libssl.a
+  ${CMAKE_CURRENT_BINARY_DIR}/openssl/lib/libcrypto.a)
 set(_GFLAGS_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/gflags/include)
 set(_GFLAGS_LIBGFLAGS ${CMAKE_CURRENT_BINARY_DIR}/gflags/lib/libgflags.a)
 set(_GLOG_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/glog/include)
 set(_GLOG_LIBGLOG ${CMAKE_CURRENT_BINARY_DIR}/glog/lib/libglog.a)
 set(_gRPC_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/grpc/include)
-set(_gRPC_LIBGRPCPP ${CMAKE_CURRENT_BINARY_DIR}/grpc/lib/libgrpc++_unsecure.a
-  ${CMAKE_CURRENT_BINARY_DIR}/grpc/lib/libgrpc_unsecure.a
+set(_gRPC_LIBGRPCPP ${CMAKE_CURRENT_BINARY_DIR}/grpc/lib/libgrpc++.a
+  ${CMAKE_CURRENT_BINARY_DIR}/grpc/lib/libgrpc.a
   ${CMAKE_CURRENT_BINARY_DIR}/grpc/lib/libgpr.a
   ${CMAKE_CURRENT_BINARY_DIR}/grpc/lib/libaddress_sorting.a)
 set(_FMT_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/fmt/include)
@@ -183,9 +185,10 @@ set(_FIM_GRPC_SRCS ${PROJECT_SOURCE_DIR}/fim-proto/c++/fim.grpc.pb.cc
 
 # Targets
 add_executable(fimd
-  fimd_server.cc
-  fimd_impl.cc
+  fimd_auth.cc
   fimd_util.cc
+  fimd_impl.cc
+  fimd_server.cc
   health_impl.cc
   ${_FIM_PROTO_SRCS}
   ${_FIM_GRPC_SRCS}
@@ -197,11 +200,12 @@ target_link_libraries(fimd
   ${_gRPC_LIBGRPCPP}
   ${_GLOG_LIBGLOG}
   ${_GFLAGS_LIBGFLAGS}
+  ${_OPENSSL_LIBOPENSSL}
   ${_PROTOBUF_LIBPROTOBUF}
   ${_ZLIB_LIBZLIB}
   ${_CARES_LIBCARES}
   -Wl,--whole-archive ${CMAKE_THREAD_LIBS_INIT} -Wl,--no-whole-archive
-  rt
+  rt pthread dl
 )
 
 # strip unnecessary symbols

@@ -51,7 +51,12 @@ To run locally, you must do so with elevated privilege in order to access the fu
 
 ```
 # in the build/ directory
-sudo ./fimd
+
+# running without secure credentials
+sudo ./fimd -insecure
+
+# running with secure credentials
+sudo ./fimd -ca_file=/etc/ssl/ca.crt -cert_file=/etc/ssl/cert.pem -key_file=/etc/ssl/key.pem
 ```
 
 **Warning**: When running the daemon out-of-cluster in a VM-based Kubernetes context, it will fail to locate the PID from the container ID through numerous cgroup checks and will be unable to start any watchers. The solution to get around this is to either run a non-VM-based local Kubernetes, or to run as a pod inside the cluster. The configurations in order to do the latter option are located in the [fim-k8s](https://github.com/clustergarage/fim-k8s) repo.

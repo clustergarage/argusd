@@ -117,6 +117,26 @@ grpc::Status FimdImpl::DestroyWatch(grpc::ServerContext *context, const fim::Fim
  * controller can reconcile if any watchers need to be added or destroyed
  */
 grpc::Status FimdImpl::GetWatchState(grpc::ServerContext *context, const fim::Empty *request, grpc::ServerWriter<fim::FimdHandle> *writer) {
+	/*
+	std::shared_ptr<const grpc::AuthContext> auth = context->auth_context();
+	if (auth != nullptr) {
+		LOG(INFO) << "PeerIdentityPropertyName = " << auth->GetPeerIdentityPropertyName().c_str();
+	}
+	std::string cert = context->auth_context()->FindPropertyValues("x509_pem_cert").front().data();
+	std::vector<grpc::string_ref> pe = auth->GetPeerIdentity();
+    for (std::vector<grpc::string_ref>::const_iterator ii = pe.begin(); ii != pe.end(); ++ii) {
+		grpc::string p(ii->begin(), ii->end());
+		LOG(WARNING) << "PeerIdentity = " << p.c_str();
+    }
+    LOG(WARNING) << "AuthPropertyIterator:";
+    for (grpc::AuthPropertyIterator ii = auth->begin(); ii!= auth->end(); ++ii) {
+		const grpc::string prop((*ii).first.begin(), (*ii).first.end());
+		const grpc::string val((*ii).second.begin(), (*ii).second.end());
+		LOG(WARNING) << "prop = " << prop.c_str();
+		LOG(WARNING) << "value = " << val.c_str();
+    }
+	*/
+
     std::for_each(watchers_.cbegin(), watchers_.cend(), [&](const std::shared_ptr<fim::FimdHandle> watcher) {
         if (!writer->Write(*watcher)) {
             // broken stream

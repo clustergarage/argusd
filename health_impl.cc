@@ -44,7 +44,6 @@ void HealthImpl::ClearStatus(const std::string &service) {
 }
 
 void HealthImpl::ClearAll() {
-    std::lock_guard<std::mutex> lock(mu_);
-    statuses_.clear();
+    std::lock_guard<std::mutex> lock(mu_); statuses_.clear();
 }
 } // namespace fimdhealth
