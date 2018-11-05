@@ -17,9 +17,9 @@
 
 #define PORT 50051
 
-DEFINE_string(ca, "", "root CA used for mutual TLS");
-DEFINE_string(cert, "", "certificate for mutual TLS");
-DEFINE_string(key, "", "private key for mutual TLS");
+DEFINE_string(ca, "", "Root CA used for mutual TLS");
+DEFINE_string(cert, "", "Certificate for mutual TLS");
+DEFINE_string(key, "", "Private key for mutual TLS");
 DEFINE_bool(insecure, false, "run server in insecure mode");
 
 int main(int argc, char **argv) {
@@ -38,14 +38,12 @@ int main(int argc, char **argv) {
 			LOG(WARNING) << "Certificate/private key not supplied in secure mode (see -insecure flag).";
 			return 1;
 		}
-        std::string key(FLAGS_key);
-        std::string cert(FLAGS_cert);
 		// The client must present a cert every time a call is made, else it
 		// will only happen once when the first connection is made.
 		// The other options can be found here:
 		// http://www.grpc.io/grpc/core/grpc__security__constants_8h.html#a29ffe63a8bb3b4945ecab42d82758f09
         grpc::SslServerCredentialsOptions sslopts(GRPC_SSL_REQUEST_AND_REQUIRE_CLIENT_CERTIFICATE_AND_VERIFY);
-        grpc::SslServerCredentialsOptions::PemKeyCertPair keycert = {key, cert};
+        grpc::SslServerCredentialsOptions::PemKeyCertPair keycert = {FLAGS_key, FLAGS_cert};
         sslopts.pem_key_cert_pairs.push_back(keycert);
 		if (FLAGS_ca != "") {
 			sslopts.pem_root_certs = FLAGS_ca;
