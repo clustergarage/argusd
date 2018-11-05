@@ -17,9 +17,9 @@
 
 #define PORT 50051
 
-DEFINE_string(ca_file, "", "SSL CA file");
-DEFINE_string(key_file, "", "SSL key file");
-DEFINE_string(cert_file, "", "SSL certificate file");
+DEFINE_string(ca, "", "root CA used for mutual TLS");
+DEFINE_string(cert, "", "certificate for mutual TLS");
+DEFINE_string(key, "", "private key for mutual TLS");
 DEFINE_bool(insecure, false, "run server in insecure mode");
 
 int main(int argc, char **argv) {
@@ -29,25 +29,17 @@ int main(int argc, char **argv) {
     FLAGS_stderrthreshold = google::INFO;
     FLAGS_colorlogtostderr = true;
 
-    auto readfile = [](const std::string &filename) -> std::string {
-        std::ifstream fh(filename);
-        std::stringstream buffer;
-        buffer << fh.rdbuf();
-        fh.close();
-        return buffer.str();
-    };
-
     std::shared_ptr<grpc::ServerCredentials> credentials;
 	if (FLAGS_insecure) {
         credentials = grpc::InsecureServerCredentials();
 	} else {
-		if (FLAGS_cert_file == "" ||
-			FLAGS_key_file == "") {
-			LOG(WARNING) << "Certificate/private key file not supplied in secure mode (see -insecure flag).";
+		if (FLAGS_cert == "" ||
+			FLAGS_key == "") {
+			LOG(WARNING) << "Certificate/private key not supplied in secure mode (see -insecure flag).";
 			return 1;
 		}
-        std::string key(readfile(FLAGS_key_file));
-        std::string cert(readfile(FLAGS_cert_file));
+        std::string key(FLAGS_key);
+        std::string cert(FLAGS_cert);
 		// The client must present a cert every time a call is made, else it
 		// will only happen once when the first connection is made.
 		// The other options can be found here:
@@ -55,8 +47,8 @@ int main(int argc, char **argv) {
         grpc::SslServerCredentialsOptions sslopts(GRPC_SSL_REQUEST_AND_REQUIRE_CLIENT_CERTIFICATE_AND_VERIFY);
         grpc::SslServerCredentialsOptions::PemKeyCertPair keycert = {key, cert};
         sslopts.pem_key_cert_pairs.push_back(keycert);
-		if (FLAGS_ca_file != "") {
-			sslopts.pem_root_certs = readfile(FLAGS_ca_file);
+		if (FLAGS_ca != "") {
+			sslopts.pem_root_certs = FLAGS_ca;
 		}
         credentials = grpc::SslServerCredentials(sslopts);
 
