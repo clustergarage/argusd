@@ -17,10 +17,10 @@
 
 #define PORT 50051
 
-DEFINE_string(ca, "", "Root CA used for mutual TLS");
-DEFINE_string(cert, "", "Certificate for mutual TLS");
-DEFINE_string(key, "", "Private key for mutual TLS");
-DEFINE_bool(insecure, false, "run server in insecure mode");
+DEFINE_bool(tls, false, "Run server in secure mode");
+DEFINE_string(tlscafile, "", "Root CA used for mutual TLS");
+DEFINE_string(tlscertfile, "", "Certificate for mutual TLS");
+DEFINE_string(tlskeyfile, "", "Private key for mutual TLS");
 
 int main(int argc, char **argv) {
     google::ParseCommandLineFlags(&argc, &argv, true);
@@ -29,29 +29,39 @@ int main(int argc, char **argv) {
     FLAGS_stderrthreshold = google::INFO;
     FLAGS_colorlogtostderr = true;
 
+    auto readfile = [](const std::string &filename) -> std::string {
+        std::ifstream fh(filename);
+        std::stringstream buffer;
+        buffer << fh.rdbuf();
+        fh.close();
+        return buffer.str();
+    };
+
     std::shared_ptr<grpc::ServerCredentials> credentials;
-	if (FLAGS_insecure) {
-        credentials = grpc::InsecureServerCredentials();
-	} else {
-		if (FLAGS_cert == "" ||
-			FLAGS_key == "") {
+	if (FLAGS_tls) {
+		if (FLAGS_tlscertfile == "" ||
+			FLAGS_tlskeyfile == "") {
 			LOG(WARNING) << "Certificate/private key not supplied in secure mode (see -insecure flag).";
 			return 1;
 		}
+        std::string key(readfile(FLAGS_tlskeyfile));
+        std::string cert(readfile(FLAGS_tlscertfile));
 		// The client must present a cert every time a call is made, else it
 		// will only happen once when the first connection is made.
 		// The other options can be found here:
 		// http://www.grpc.io/grpc/core/grpc__security__constants_8h.html#a29ffe63a8bb3b4945ecab42d82758f09
         grpc::SslServerCredentialsOptions sslopts(GRPC_SSL_REQUEST_AND_REQUIRE_CLIENT_CERTIFICATE_AND_VERIFY);
-        grpc::SslServerCredentialsOptions::PemKeyCertPair keycert = {FLAGS_key, FLAGS_cert};
+        grpc::SslServerCredentialsOptions::PemKeyCertPair keycert = {key, cert};
         sslopts.pem_key_cert_pairs.push_back(keycert);
-		if (FLAGS_ca != "") {
-			sslopts.pem_root_certs = FLAGS_ca;
+		if (FLAGS_tlscafile != "") {
+			sslopts.pem_root_certs = readfile(FLAGS_tlscafile);
 		}
         credentials = grpc::SslServerCredentials(sslopts);
 
 		//std::shared_ptr<fimd::FimdAuthMetadataProcessor> authproc(new fimd::FimdAuthMetadataProcessor());
 		//credentials->SetAuthMetadataProcessor(authproc);
+	} else {
+        credentials = grpc::InsecureServerCredentials();
     }
 
     std::stringstream ss;
