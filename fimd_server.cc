@@ -41,7 +41,7 @@ int main(int argc, char **argv) {
 	if (FLAGS_tls) {
 		if (FLAGS_tlscertfile == "" ||
 			FLAGS_tlskeyfile == "") {
-			LOG(WARNING) << "Certificate/private key not supplied in secure mode (see -insecure flag).";
+			LOG(WARNING) << "Certificate/private key not supplied (with -tls flag).";
 			return 1;
 		}
         std::string key(readfile(FLAGS_tlskeyfile));
