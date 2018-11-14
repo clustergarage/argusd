@@ -3,6 +3,7 @@
 #include <poll.h>
 #include <sys/eventfd.h>
 #include <sys/inotify.h>
+#include <algorithm>
 #include <functional>
 #include <future>
 #include <memory>
@@ -36,6 +37,7 @@ namespace fimd {
  *   sep      placeholder for a "/" character (e.g. between path/file)
  */
 std::string FimdImpl::DEFAULT_FORMAT = "{event} {ftype} '{path}{sep}{file}' ({pod}:{node}) {tags}";
+grpc::ServerWriter<fim::FimdMetricsHandle> *FimdImpl::metricsWriter_;
 
 /**
  * CreateWatch is responsible for creating (or updating) a fim watcher
@@ -66,7 +68,8 @@ grpc::Status FimdImpl::CreateWatch(grpc::ServerContext *context, const fim::Fimd
     response->set_nodename(request->nodename().c_str());
     response->set_podname(request->podname().c_str());
     response->set_mqfd(static_cast<google::protobuf::int32>(createMessageQueue(request->logformat(),
-        request->nodename(), request->podname(), request->subject(), (watcher != nullptr ? response->mqfd() : EOF))));
+        request->name(), request->nodename(), request->podname(), request->subject(),
+        (watcher != nullptr ? response->mqfd() : EOF))));
 
     for_each(pids.cbegin(), pids.cend(), [&](const int pid) {
         int i = 0;
@@ -122,6 +125,18 @@ grpc::Status FimdImpl::GetWatchState(grpc::ServerContext *context, const fim::Em
             // broken stream
         }
     });
+    return grpc::Status::OK;
+}
+
+/**
+ * RecordMetrics is used to send the controller inotify events that occur on
+ * this daemon by way of a gRPC stream
+ */
+grpc::Status FimdImpl::RecordMetrics(grpc::ServerContext *context, const fim::Empty *request, grpc::ServerWriter<fim::FimdMetricsHandle> *writer) {
+    metricsWriter_ = writer;
+    while (true) {
+        // keep alive so the mq streams in new events as it gets them
+    }
     return grpc::Status::OK;
 }
 
@@ -290,8 +305,8 @@ void FimdImpl::createInotifyWatcher(std::shared_ptr<fim::FimWatcherSubject> subj
  * descriptor that the fimnotify process will add events that need to be logged
  * out here
  */
-mqd_t FimdImpl::createMessageQueue(const std::string logFormat, const std::string nodeName, const std::string podName,
-    const google::protobuf::RepeatedPtrField<fim::FimWatcherSubject> subjects, mqd_t mq) {
+mqd_t FimdImpl::createMessageQueue(const std::string logFormat, const std::string name, const std::string nodeName,
+    const std::string podName, const google::protobuf::RepeatedPtrField<fim::FimWatcherSubject> subjects, mqd_t mq) {
 
     std::stringstream ss;
     ss << MQ_QUEUE_NAME << "-" << podName;
@@ -319,9 +334,10 @@ mqd_t FimdImpl::createMessageQueue(const std::string logFormat, const std::strin
     }
 
     // start message queue
-    std::packaged_task<void(const std::string, const std::string, const std::string, const google::protobuf::RepeatedPtrField<fim::FimWatcherSubject>,
+    std::packaged_task<void(const std::string, const std::string, const std::string, const std::string,
+        const google::protobuf::RepeatedPtrField<fim::FimWatcherSubject>,
         const mqd_t, const std::string)> queue(startMessageQueue);
-    std::thread queueThread(move(queue), logFormat, nodeName, podName, subjects, mq, mqPath);
+    std::thread queueThread(move(queue), logFormat, name, nodeName, podName, subjects, mq, mqPath);
     // start as daemon process
     queueThread.detach();
 
@@ -334,8 +350,9 @@ mqd_t FimdImpl::createMessageQueue(const std::string logFormat, const std::strin
  * any message that comes through on the mqueue will be handled here and any
  * custom logging format can be applied to be processed here
  */
-void FimdImpl::startMessageQueue(const std::string logFormat, const std::string nodeName, const std::string podName,
-    const google::protobuf::RepeatedPtrField<fim::FimWatcherSubject> subjects, const mqd_t mq, const std::string mqPath) {
+void FimdImpl::startMessageQueue(const std::string logFormat, const std::string name, const std::string nodeName,
+    const std::string podName, const google::protobuf::RepeatedPtrField<fim::FimWatcherSubject> subjects,
+    const mqd_t mq, const std::string mqPath) {
 
     bool done = false;
     do {
@@ -366,7 +383,7 @@ void FimdImpl::startMessageQueue(const std::string logFormat, const std::string 
             else if (fwevent->event_mask & IN_MOVED_TO)      maskStr = "MOVED_TO";
             else if (fwevent->event_mask & IN_OPEN)          maskStr = "OPEN";
 
-            const std::shared_ptr<fim::FimWatcherSubject> subject = std::make_shared<fim::FimWatcherSubject>(subjects.Get(fwevent->sid));
+            const auto subject = std::make_shared<fim::FimWatcherSubject>(subjects.Get(fwevent->sid));
 
             fmt::memory_buffer out;
             try {
@@ -382,6 +399,16 @@ void FimdImpl::startMessageQueue(const std::string logFormat, const std::string 
                 LOG(INFO) << fmt::to_string(out);
             } catch(const std::exception &e) {
                 LOG(WARNING) << "Malformed FimWatcher `.spec.logFormat`: \"" << e.what() << "\"";
+            }
+
+            auto metric = std::make_shared<fim::FimdMetricsHandle>();
+            metric->set_fimwatcher(name);
+            std::transform(maskStr.begin(), maskStr.end(), maskStr.begin(), ::tolower);
+            metric->set_event(maskStr);
+            metric->set_nodename(nodeName);
+            // record event to metrics writer to be put into Prometheus
+            if (!metricsWriter_->Write(*metric)) {
+                // broken stream
             }
         }
     } while (!done);

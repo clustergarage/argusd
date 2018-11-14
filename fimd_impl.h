@@ -17,6 +17,7 @@ public:
     grpc::Status CreateWatch(grpc::ServerContext *context, const fim::FimdConfig *request, fim::FimdHandle *response) override;
     grpc::Status DestroyWatch(grpc::ServerContext *context, const fim::FimdConfig *request, fim::Empty *response) override;
     grpc::Status GetWatchState(grpc::ServerContext *context, const fim::Empty *request, grpc::ServerWriter<fim::FimdHandle> *writer) override;
+    grpc::Status RecordMetrics(grpc::ServerContext *context, const fim::Empty *request, grpc::ServerWriter<fim::FimdMetricsHandle> *writer) override;
 
 private:
     std::vector<int> getPidsFromRequest(std::shared_ptr<fim::FimdConfig> request);
@@ -27,10 +28,11 @@ private:
     uint32_t getEventMaskFromSubject(std::shared_ptr<fim::FimWatcherSubject> subject);
     void createInotifyWatcher(std::shared_ptr<fim::FimWatcherSubject> subject, const int pid, const int sid,
         google::protobuf::RepeatedField<google::protobuf::int32> *procFds, const mqd_t mq);
-    mqd_t createMessageQueue(const std::string logFormat, const std::string nodeName, const std::string podName,
-        const google::protobuf::RepeatedPtrField<fim::FimWatcherSubject> subjects, mqd_t mq);
-    static void startMessageQueue(const std::string logFormat, const std::string nodeName, const std::string podName,
-        const google::protobuf::RepeatedPtrField<fim::FimWatcherSubject> subjects, const mqd_t mq, const std::string mqPath);
+    mqd_t createMessageQueue(const std::string logFormat, const std::string name, const std::string nodeName,
+        const std::string podName, const google::protobuf::RepeatedPtrField<fim::FimWatcherSubject> subjects, mqd_t mq);
+    static void startMessageQueue(const std::string logFormat, const std::string name, const std::string nodeName,
+        const std::string podName, const google::protobuf::RepeatedPtrField<fim::FimWatcherSubject> subjects,
+        const mqd_t mq, const std::string mqPath);
     void sendKillSignalToWatcher(std::shared_ptr<fim::FimdHandle> watcher);
     void eraseEventProcessfd(google::protobuf::RepeatedField<google::protobuf::int32> *eventProcessfds, const int processfd);
     void sendExitMessageToMessageQueue(std::shared_ptr<fim::FimdHandle> watcher);
@@ -45,6 +47,7 @@ private:
 
     static std::string DEFAULT_FORMAT;
     std::vector<std::shared_ptr<fim::FimdHandle>> watchers_;
+    static grpc::ServerWriter<fim::FimdMetricsHandle> *metricsWriter_;
 };
 } // namespace fimd
 
