@@ -1,3 +1,27 @@
+/**
+ * MIT License
+ *
+ * Copyright (c) 2018 ClusterGarage
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
 #include "fimd_impl.h"
 
 #include <poll.h>
@@ -25,27 +49,26 @@ extern "C" {
 
 namespace fimd {
 /**
- * default logging format
- * specifiers that can be used:
- *   pod      name of the pod
- *   node     name of the node
- *   event    inotify event that was observed
- *   path     name of the directory path
- *   file     name of the file
- *   ftype    evaluates to "file" or "directory"
- *   tags     list of custom tags in key=value comma-separated list
- *   sep      placeholder for a "/" character (e.g. between path/file)
+ * Default logging format. Specifiers that can be used:
+ *   `pod`      Name of the pod.
+ *   `node`		Name of the node.
+ *   `event`    `inotify` event that was observed.
+ *   `path`     Name of the directory path.
+ *   `file`     Name of the file.
+ *   `ftype`    Evaluates to "file" or "directory".
+ *   `tags`     List of custom tags in key=value comma-separated list.
+ *   `sep`      Placeholder for a "/" character (e.g. between path/file).
  */
 std::string FimdImpl::DEFAULT_FORMAT = "{event} {ftype} '{path}{sep}{file}' ({pod}:{node}) {tags}";
 grpc::ServerWriter<fim::FimdMetricsHandle> *FimdImpl::metricsWriter_;
 
 /**
- * CreateWatch is responsible for creating (or updating) a fim watcher
- * find list of pids from the request's container ids list
- * with the list of pids, create inotify watchers by spawning a `fimnotify`
- * process that handles the filesystem-level instructions to do so
- * an mqueue process is created to watch on a pod-level mq file descriptor;
- * that way if this pod is killed all mqueue watchers go with it
+ * CreateWatch is responsible for creating (or updating) a fim watcher. Find
+ * list of PIDs from the request's container IDs list. With the list of PIDs,
+ * create `inotify` watchers by spawning a fimnotify process that handles the
+ * filesystem-level instructions to do so an mqueue process is created to watch
+ * on a pod-level mq file descriptor. That way if this pod is killed all mqueue
+ * watchers go with it.
  */
 grpc::Status FimdImpl::CreateWatch(grpc::ServerContext *context, const fim::FimdConfig *request, fim::FimdHandle *response) {
     auto pids = getPidsFromRequest(std::make_shared<fim::FimdConfig>(*request));
@@ -53,14 +76,14 @@ grpc::Status FimdImpl::CreateWatch(grpc::ServerContext *context, const fim::Fimd
         return grpc::Status::CANCELLED;
     }
 
-    // find existing watcher by pid in case we need to update
-    // inotify_add_watcher is designed to both add and modify depending
-    // on if a fd exists already for this path
+    // Find existing watcher by pid in case we need to update
+    // inotify_add_watcher is designed to both add and modify depending on if a
+    // fd exists already for this path.
     auto watcher = findFimdWatcherByPids(request->nodename(), pids);
-    LOG(INFO) << (watcher == nullptr ? "Starting" : "Updating") << " inotify watcher ("
+    LOG(INFO) << (watcher == nullptr ? "Starting" : "Updating") << " `inotify` watcher ("
         << request->podname() << ":" << request->nodename() << ")";
     if (watcher != nullptr) {
-        // stop existing watcher polling
+        // Stop existing watcher polling.
         sendKillSignalToWatcher(watcher);
         watcher->clear_processeventfd();
     }
@@ -74,7 +97,7 @@ grpc::Status FimdImpl::CreateWatch(grpc::ServerContext *context, const fim::Fimd
     for_each(pids.cbegin(), pids.cend(), [&](const int pid) {
         int i = 0;
         for_each(request->subject().cbegin(), request->subject().cend(), [&](const fim::FimWatcherSubject subject) {
-            // @TODO: check if any watchers are started, if not, don't add to response
+            // @TODO: Check if any watchers are started, if not, don't add to response.
             createInotifyWatcher(std::make_shared<fim::FimWatcherSubject>(subject), pid, i,
                 response->mutable_processeventfd(), response->mqfd());
             ++i;
@@ -83,7 +106,7 @@ grpc::Status FimdImpl::CreateWatch(grpc::ServerContext *context, const fim::Fimd
     });
 
     if (watcher == nullptr) {
-        // store new watcher
+        // Store new watcher.
         watchers_.push_back(std::make_shared<fim::FimdHandle>(*response));
     } else {
         std::for_each(response->processeventfd().cbegin(), response->processeventfd().cend(), [&](const int processfd) {
@@ -95,18 +118,18 @@ grpc::Status FimdImpl::CreateWatch(grpc::ServerContext *context, const fim::Fimd
 }
 
 /**
- * DestroyWatch is responsible for deleting a fim watcher
- * send exit message to the mqueue to stop watching for events to log
- * send kill signal to the `fimnotify` poller to stop that child process
+ * DestroyWatch is responsible for deleting a fim watcher. Send exit message to
+ * the mqueue to stop watching for events to log. Send kill signal to the
+ * fimnotify poller to stop that child process.
  */
 grpc::Status FimdImpl::DestroyWatch(grpc::ServerContext *context, const fim::FimdConfig *request, fim::Empty *response) {
-    LOG(INFO) << "Stopping inotify watcher (" << request->podname() << ":" << request->nodename() << ")";
+    LOG(INFO) << "Stopping `inotify` watcher (" << request->podname() << ":" << request->nodename() << ")";
 
     auto watcher = findFimdWatcherByPids(request->nodename(), std::vector<int>(request->pid().cbegin(), request->pid().cend()));
     if (watcher != nullptr) {
-        // stop existing message queue
+        // Stop existing message queue.
         sendExitMessageToMessageQueue(watcher);
-        // stop existing watcher polling
+        // Stop existing watcher polling.
         sendKillSignalToWatcher(watcher);
     }
     watchers_.erase(remove(watchers_.begin(), watchers_.end(), watcher), watchers_.end());
@@ -117,31 +140,31 @@ grpc::Status FimdImpl::DestroyWatch(grpc::ServerContext *context, const fim::Fim
 /**
  * GetWatchState periodically gets called by the Kubernetes controller and is
  * responsible for gathering the current watcher state to send back so the
- * controller can reconcile if any watchers need to be added or destroyed
+ * controller can reconcile if any watchers need to be added or destroyed.
  */
 grpc::Status FimdImpl::GetWatchState(grpc::ServerContext *context, const fim::Empty *request, grpc::ServerWriter<fim::FimdHandle> *writer) {
     std::for_each(watchers_.cbegin(), watchers_.cend(), [&](const std::shared_ptr<fim::FimdHandle> watcher) {
         if (!writer->Write(*watcher)) {
-            // broken stream
+            // Broken stream.
         }
     });
     return grpc::Status::OK;
 }
 
 /**
- * RecordMetrics is used to send the controller inotify events that occur on
- * this daemon by way of a gRPC stream
+ * RecordMetrics is used to send the controller `inotify` events that occur on
+ * this daemon by way of a gRPC stream.
  */
 grpc::Status FimdImpl::RecordMetrics(grpc::ServerContext *context, const fim::Empty *request, grpc::ServerWriter<fim::FimdMetricsHandle> *writer) {
     metricsWriter_ = writer;
     while (true) {
-        // keep alive so the mq streams in new events as it gets them
+        // Keep alive so the mq streams in new events as it gets them.
     }
     return grpc::Status::OK;
 }
 
 /**
- * return list of pids looked up by container ids from request
+ * Return list of PIDs looked up by container IDs from request.
  */
 std::vector<int> FimdImpl::getPidsFromRequest(std::shared_ptr<fim::FimdConfig> request) {
     std::vector<int> pids;
@@ -156,7 +179,7 @@ std::vector<int> FimdImpl::getPidsFromRequest(std::shared_ptr<fim::FimdConfig> r
 }
 
 /**
- * returns stored watcher that pertains to a list of pids on a specific node
+ * Returns stored watcher that pertains to a list of PIDs on a specific node.
  */
 std::shared_ptr<fim::FimdHandle> FimdImpl::findFimdWatcherByPids(const std::string nodeName, const std::vector<int> pids) {
     auto it = find_if(watchers_.cbegin(), watchers_.cend(), [&](std::shared_ptr<fim::FimdHandle> watcher) {
@@ -175,10 +198,9 @@ std::shared_ptr<fim::FimdHandle> FimdImpl::findFimdWatcherByPids(const std::stri
 }
 
 /**
- * returns array of char buffer paths to do the actual watch on given a list
- * of subjects
- * these prepend /proc/{PID}/root on each path so we can monitor via profs
- * directly to receive inode events
+ * Returns array of char buffer paths to do the actual watch on given a list of
+ * subjects. These prepend /proc/{PID}/root on each path so we can monitor via profs
+ * directly to receive inode events.
  */
 char **FimdImpl::getPathArrayFromSubject(const int pid, std::shared_ptr<fim::FimWatcherSubject> subject) {
     std::vector<std::string> pathvec;
@@ -197,9 +219,9 @@ char **FimdImpl::getPathArrayFromSubject(const int pid, std::shared_ptr<fim::Fim
 }
 
 /**
- * returns array of char buffer paths to ignore given a list of subjects
- * when doing a recursive watch, if ignore paths are provided that match a
- * specific path it will be skipped, including all its children
+ * Returns array of char buffer paths to ignore given a list of subjects. When
+ * doing a recursive watch, if ignore paths are provided that match a specific
+ * path it will be skipped, including all its children.
  */
 char **FimdImpl::getPathArrayFromIgnore(std::shared_ptr<fim::FimWatcherSubject> subject) {
     char **patharr = new char *[subject->ignore_size()];
@@ -213,7 +235,7 @@ char **FimdImpl::getPathArrayFromIgnore(std::shared_ptr<fim::FimWatcherSubject> 
 }
 
 /**
- * returns a comma-separated list of key=value pairs for a subject tag map
+ * Returns a comma-separated list of key=value pairs for a subject tag map.
  */
 std::string FimdImpl::getTagListFromSubject(std::shared_ptr<fim::FimWatcherSubject> subject) {
     std::string tags;
@@ -227,9 +249,8 @@ std::string FimdImpl::getTagListFromSubject(std::shared_ptr<fim::FimWatcherSubje
 }
 
 /**
- * returns a bitwise-OR combined event mask given a subject
- * the subject->event can be an array of strings that match directly to an
- * inotify event
+ * Returns a bitwise-OR combined event mask given a subject. The subject->event
+ * can be an array of strings that match directly to an `inotify` event.
  */
 uint32_t FimdImpl::getEventMaskFromSubject(std::shared_ptr<fim::FimWatcherSubject> subject) {
     uint32_t mask = 0;
@@ -255,18 +276,17 @@ uint32_t FimdImpl::getEventMaskFromSubject(std::shared_ptr<fim::FimWatcherSubjec
 }
 
 /**
- * create child processes as background threads for spawning a fimnotify
- * watcher
- * we will create an anonymous pipe used to communicate to this background
- * thread later from this implementation; in the case of updating/deleting an
- * existing watcher
- * an additional cleanup thread is created to specify removing the anonymous
- * pipe in the case of an error returned by the fimnotify poller
+ * Create child processes as background threads for spawning a fimnotify
+ * watcher. We will create an anonymous pipe used to communicate to this
+ * background thread later from this implementation; in the case of
+ * updating/deleting an existing watcher. An additional cleanup thread is
+ * created to specify removing the anonymous pipe in the case of an error
+ * returned by the fimnotify poller.
  */
 void FimdImpl::createInotifyWatcher(std::shared_ptr<fim::FimWatcherSubject> subject, const int pid, const int sid,
     google::protobuf::RepeatedField<google::protobuf::int32> *eventProcessfds, const mqd_t mq) {
 
-    // create anonymous pipe to communicate with inotify watcher
+    // Create anonymous pipe to communicate with `inotify` watcher.
     const int processfd = eventfd(0, EFD_CLOEXEC);
     if (processfd == EOF) {
         return;
@@ -278,14 +298,13 @@ void FimdImpl::createInotifyWatcher(std::shared_ptr<fim::FimWatcherSubject> subj
     std::thread taskThread(std::move(task), pid, sid, subject->path_size(), getPathArrayFromSubject(pid, subject),
         subject->ignore_size(), getPathArrayFromIgnore(subject), getEventMaskFromSubject(subject),
         subject->onlydir(), subject->recursive(), subject->maxdepth(), processfd, mq);
-    // start as daemon process
+    // Start as daemon process.
     taskThread.detach();
 
-    // once the fimnotify task begins we listen for a return status in a
-    // separate, cleanup thread
-    // when this result comes back, if it's in error state, we do any necessary
-    // cleanup here, such as destroy our anonymous pipe into the fimnotify
-    // poller
+    // Once the fimnotify task begins we listen for a return status in a
+    // separate, cleanup thread. When this result comes back, if it's in error
+    // state, we do any necessary cleanup here, such as destroy our anonymous
+    // pipe into the fimnotify poller.
     std::thread cleanupThread([=](std::shared_future<int> res) {
         std::future_status status;
         do {
@@ -301,9 +320,9 @@ void FimdImpl::createInotifyWatcher(std::shared_ptr<fim::FimWatcherSubject> subj
 }
 
 /**
- * create child process as a background thread to listen on an mqueue file
+ * Create child process as a background thread to listen on an mqueue file
  * descriptor that the fimnotify process will add events that need to be logged
- * out here
+ * out here.
  */
 mqd_t FimdImpl::createMessageQueue(const std::string logFormat, const std::string name, const std::string nodeName,
     const std::string podName, const google::protobuf::RepeatedPtrField<fim::FimWatcherSubject> subjects, mqd_t mq) {
@@ -318,13 +337,13 @@ mqd_t FimdImpl::createMessageQueue(const std::string logFormat, const std::strin
     }
 
     mq_attr attr;
-    // initialize the queue attributes
+    // Initialize the queue attributes.
     attr.mq_flags = 0;
     attr.mq_maxmsg = 10;
     attr.mq_msgsize = MQ_MAX_SIZE;
     attr.mq_curmsgs = 0;
 
-    // create the message queue
+    // Create the message queue.
     mq = mq_open(mqPath.c_str(), O_CREAT | O_CLOEXEC | O_RDWR, S_IRUSR | S_IWUSR, &attr);
     if (mq == EOF) {
 #if DEBUG
@@ -333,22 +352,22 @@ mqd_t FimdImpl::createMessageQueue(const std::string logFormat, const std::strin
         return EOF;
     }
 
-    // start message queue
+    // Start message queue.
     std::packaged_task<void(const std::string, const std::string, const std::string, const std::string,
         const google::protobuf::RepeatedPtrField<fim::FimWatcherSubject>,
         const mqd_t, const std::string)> queue(startMessageQueue);
     std::thread queueThread(move(queue), logFormat, name, nodeName, podName, subjects, mq, mqPath);
-    // start as daemon process
+    // Start as daemon process.
     queueThread.detach();
 
     return mq;
 }
 
 /**
- * starts a blocking function that will be spawned as a background thread in
- * the above function
- * any message that comes through on the mqueue will be handled here and any
- * custom logging format can be applied to be processed here
+ * Starts a blocking function that will be spawned as a background thread in
+ * the above function. Any message that comes through on the mqueue will be
+ * handled here and any custom logging format can be applied to be processed
+ * here.
  */
 void FimdImpl::startMessageQueue(const std::string logFormat, const std::string name, const std::string nodeName,
     const std::string podName, const google::protobuf::RepeatedPtrField<fim::FimWatcherSubject> subjects,
@@ -406,9 +425,9 @@ void FimdImpl::startMessageQueue(const std::string logFormat, const std::string 
             std::transform(maskStr.begin(), maskStr.end(), maskStr.begin(), ::tolower);
             metric->set_event(maskStr);
             metric->set_nodename(nodeName);
-            // record event to metrics writer to be put into Prometheus
+            // Record event to metrics writer to be put into Prometheus.
             if (!metricsWriter_->Write(*metric)) {
-                // broken stream
+                // Broken stream.
             }
         }
     } while (!done);
@@ -418,10 +437,10 @@ void FimdImpl::startMessageQueue(const std::string logFormat, const std::string 
 }
 
 /**
- * sends a message over the anonymous pipe to stop the fimnotify poller
+ * Sends a message over the anonymous pipe to stop the fimnotify poller.
  */
 void FimdImpl::sendKillSignalToWatcher(std::shared_ptr<fim::FimdHandle> watcher) {
-    // kill existing watcher polls
+    // Kill existing watcher polls.
     std::for_each(watcher->processeventfd().cbegin(), watcher->processeventfd().cend(), [&](const int processfd) {
         send_watcher_kill_signal(processfd);
         eraseEventProcessfd(watcher->mutable_processeventfd(), processfd);
@@ -429,8 +448,8 @@ void FimdImpl::sendKillSignalToWatcher(std::shared_ptr<fim::FimdHandle> watcher)
 }
 
 /**
- * shuts down the anonymous pipe used to communicate by the fimnotify poller
- * and removes it from the stored collection of pipes
+ * Shuts down the anonymous pipe used to communicate by the fimnotify poller
+ * and removes it from the stored collection of pipes.
  */
 void FimdImpl::eraseEventProcessfd(google::protobuf::RepeatedField<google::protobuf::int32> *eventProcessfds, const int processfd) {
     if (!eventProcessfds->size()) {
@@ -445,11 +464,11 @@ void FimdImpl::eraseEventProcessfd(google::protobuf::RepeatedField<google::proto
 }
 
 /**
- * sends a message to the mqueue file descriptor to stop the listener
+ * Sends a message to the mqueue file descriptor to stop the listener.
  */
 void FimdImpl::sendExitMessageToMessageQueue(std::shared_ptr<fim::FimdHandle> watcher) {
-    // in order to stop the blocking mqueue process, send a specific exit
-    // message that will break it out of the loop
+    // In order to stop the blocking mqueue process, send a specific exit
+    // message that will break it out of the loop.
     if (mq_send(watcher->mqfd(), MQ_EXIT_MESSAGE, strlen(MQ_EXIT_MESSAGE), 1) == EOF) {
 #if DEBUG
         perror("mq_send");

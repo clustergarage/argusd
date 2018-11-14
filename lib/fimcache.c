@@ -1,3 +1,27 @@
+/**
+ * MIT License
+ * 
+ * Copyright (c) 2018 ClusterGarage
+ * 
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ * 
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
 #define _GNU_SOURCE
 #include <errno.h>
 #include <limits.h>
@@ -13,20 +37,20 @@
 extern struct fimwatch *wlcache;
 
 /**
- * deallocate the watch cache
+ * Deallocate the watch cache.
  */
 void free_cache(struct fimwatch *watch) {
     if (watch->slot == -1) {
         return;
     }
-    // free up dynamically-allocated memory for `wd` and `paths` arrays
+    // Free up dynamically-allocated memory for `wd` and `paths` arrays.
     free(watch->wd);
     free(watch->paths);
     mark_cache_slot_empty(watch->slot);
 }
 
 /**
- * find the position in the `wlcache` given a `pid` and `sid`
+ * Find the position in the `wlcache` given a `pid` and `sid`.
  */
 int find_cached_slot(const int pid, const int sid) {
     int i;
@@ -40,7 +64,7 @@ int find_cached_slot(const int pid, const int sid) {
 }
 
 /**
- * check that all path names in the cache are valid and refer to directories
+ * Check that all path names in the cache are valid and refer to directories.
  */
 void check_cache_consistency(const struct fimwatch *watch) {
     struct stat sb;
@@ -72,10 +96,10 @@ void check_cache_consistency(const struct fimwatch *watch) {
 }
 
 /**
- * when checking cache consistency, remove an item at `index` in a given
- * fimwatch object
- * this just moves the `wd` and `paths` position in the watch object, doesn't
- * deallocate any memory or remove the item itself from the `wlcache`
+ * When checking cache consistency, remove an item at `index` in a given
+ * fimwatch object. This just moves the `wd` and `paths` position in the watch
+ * object, doesn't deallocate any memory or remove the item itself from the
+ * `wlcache`.
  */
 void remove_item_from_cache(struct fimwatch *watch, int const index) {
     int i;
@@ -87,8 +111,8 @@ void remove_item_from_cache(struct fimwatch *watch, int const index) {
 }
 
 /**
- * check whether the cache contains the watch descriptor `wd`
- * if found, return the slot number, otherwise return -1
+ * Check whether the cache contains the watch descriptor `wd`. If found, return
+ * the slot number, otherwise return -1.
  */
 int find_watch(const struct fimwatch *watch, const int wd) {
     int i;
@@ -104,7 +128,7 @@ int find_watch(const struct fimwatch *watch, const int wd) {
 }
 
 /**
- * deallocate the watch cache
+ * Deallocate the watch cache.
  */
 int find_watch_checked(const struct fimwatch *watch, const int wd) {
     int slot = find_watch(watch, wd);
@@ -116,13 +140,13 @@ int find_watch_checked(const struct fimwatch *watch, const int wd) {
     printf("could not find watch: %d\n", wd);
     fflush(stdout);
 #endif
-    // returning -1 to our caller identifies that there's a problem, and the
-    // caller should probably trigger a cache rebuild
+    // Returning -1 to our caller identifies that there's a problem, and the
+    // caller should probably trigger a cache rebuild.
     return -1;
 }
 
 /**
- * mark a cache entry as unused
+ * Mark a cache entry as unused.
  */
 void mark_cache_slot_empty(const int slot) {
     wlcache[slot] = (struct fimwatch){
@@ -139,7 +163,7 @@ void mark_cache_slot_empty(const int slot) {
 }
 
 /**
- * find a free slot in the cache
+ * Find a free slot in the cache.
  */
 int find_empty_cache_slot() {
     int i, j;
@@ -148,7 +172,7 @@ int find_empty_cache_slot() {
             return i;
         }
     }
-    // no free slot found; resize cache
+    // No free slot found; resize cache.
     wlcachec += ALLOC_INC;
 
     wlcache = realloc(wlcache, wlcachec * sizeof(struct fimwatch));
@@ -161,12 +185,12 @@ int find_empty_cache_slot() {
     for (i = wlcachec - ALLOC_INC; i < wlcachec; ++i) {
         mark_cache_slot_empty(i);
     }
-    // return first slot in newly allocated space
+    // Return first slot in newly allocated space.
     return wlcachec - ALLOC_INC;
 }
 
 /**
- * add an item to the cache
+ * Add an item to the cache.
  */
 void add_watch_to_cache(struct fimwatch *watch) {
     int slot = find_empty_cache_slot();
@@ -175,8 +199,8 @@ void add_watch_to_cache(struct fimwatch *watch) {
 }
 
 /**
- * return the cache slot that corresponds to a particular path name or -1 if
- * the path is not in the cache
+ * Return the cache slot that corresponds to a particular path name or -1 if
+ * the path is not in the cache.
  */
 int path_name_to_cache_slot(const struct fimwatch *watch, const char *path) {
     int i;
@@ -193,8 +217,8 @@ int path_name_to_cache_slot(const struct fimwatch *watch, const char *path) {
 }
 
 /**
- * return the pathname that corresponds to the watch descriptor `wd` or blank
- * string if the watch descriptor is not in the cache
+ * Return the pathname that corresponds to the watch descriptor `wd` or blank
+ * string if the watch descriptor is not in the cache.
  */
 char *wd_to_path_name(const struct fimwatch *watch, const int wd) {
     int i;
@@ -207,8 +231,8 @@ char *wd_to_path_name(const struct fimwatch *watch, const int wd) {
 }
 
 /**
- * return the cache slot that corresponds to the watch descriptor `wd` or -1 if
- * the watch descriptor is not in the cache
+ * Return the cache slot that corresponds to the watch descriptor `wd` or -1 if
+ * the watch descriptor is not in the cache.
  */
 int wd_to_cache_slot(const struct fimwatch *watch, const int wd) {
     int i;

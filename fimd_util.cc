@@ -1,3 +1,27 @@
+/**
+ * MIT License
+ *
+ * Copyright (c) 2018 ClusterGarage
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
 #include "fimd_util.h"
 
 #include <glob.h>
@@ -18,17 +42,18 @@ std::string FimdUtil::findContainerRuntime(const std::string containerId) {
             return (*it);
         }
     }
-    // default to docker for now
+    // Default to docker for now.
     return "docker";
 }
 
 /**
- * find the process ID given a container ID and runtime
- * do this through various lookup attempts on a cgroup
- * modified to glob with id
- * modified to search for newer docker containers
- * modified to search for newer kubernetes+docker versions
- * modified to search cri-o, rkt, containerd sources
+ * Find the process ID given a container ID and runtime. Do this through
+ * various lookup attempts on a cgroup.
+ * Changelog:
+ *  - modified to glob with id
+ *  - modified to search for newer docker containers
+ *  - modified to search for newer kubernetes+docker versions
+ *  - modified to search cri-o, rkt, containerd sources
  */
 int FimdUtil::getPidForContainer(std::string id, const std::string runtime) {
     int pid = 0;
@@ -38,24 +63,27 @@ int FimdUtil::getPidForContainer(std::string id, const std::string runtime) {
     if (runtime == "docker") {
         std::vector<std::string> cgroups{"memory", "cpu", "cpuacct", "cpuset"};
         for (auto it = cgroups.cbegin(); it != cgroups.cend(); ++it) {
-            // memory cgroup is chosen randomly; any cgroup used by docker works
+            // Memory cgroup is chosen randomly. Any cgroup used by docker
+            // works.
             std::string cgroupRoot = findCgroupMountpoint((*it));
             std::string cgroupThis = getThisCgroup((*it), runtime);
 
             attempts.push_back(cgroupRoot + cgroupThis + '/' + id + "/tasks");
-            // with more recent lxc, cgroup will be in lxc/
+            // With more recent lxc, cgroup will be in lxc/.
             attempts.push_back(cgroupRoot + cgroupThis + "/lxc/" + id + "/tasks");
-            // with more recent docker, cgroup will be in docker/
+            // With more recent docker, cgroup will be in docker/.
             attempts.push_back(cgroupRoot + cgroupThis + "/docker/" + id + "/tasks");
-            // even more recent docker versions under systemd, use docker-<id>.scope/
+            // Even more recent docker versions under systemd, use
+            // docker-<id>.scope/.
             attempts.push_back(cgroupRoot + "/system.slice/docker-" + id + ".scope/tasks");
-            // even more recent docker versions under cgroup/systemd/docker/<id>/
+            // Even more recent docker versions under
+            // cgroup/systemd/docker/<id>/
             attempts.push_back(cgroupRoot + "/../systemd/docker/" + id + "/tasks");
-            // kubernetes with docker and CNI is even more different
+            // Kubernetes with docker and CNI is even more different.
             attempts.push_back(cgroupRoot + "/../systemd/kubepods/*/pod*/" + id + "/tasks");
-            // another flavor of containers location in recent kubernetes 1.11+
+            // Another flavor of containers location in recent Kubernetes 1.11+.
             attempts.push_back(cgroupRoot + cgroupThis + "/kubepods.slice/kubepods-besteffort.slice/*/docker-" + id + ".scope/tasks");
-            // when running inside of a container with recent kubernetes 1.11+
+            // When running inside of a container with recent Kubernetes 1.11+.
             attempts.push_back(cgroupRoot + "/kubepods.slice/kubepods-besteffort.slice/*/docker-" + id + ".scope/tasks");
         }
     } else if (runtime == "cri-o") {
@@ -80,8 +108,8 @@ int FimdUtil::getPidForContainer(std::string id, const std::string runtime) {
 }
 
 /**
- * perform a file glob check
- * takes `pattern` string and returns result of matches on this glob
+ * Perform a file glob check. Takes `pattern` string and returns result of
+ * matches on this glob.
  */
 std::vector<std::string> FimdUtil::fglob(const std::string &pattern) {
     std::vector<std::string> filenames;
@@ -97,12 +125,12 @@ std::vector<std::string> FimdUtil::fglob(const std::string &pattern) {
 }
 
 /**
- * returns the path to the cgroup mountpoint
+ * Returns the path to the cgroup mountpoint.
  */
 std::string FimdUtil::findCgroupMountpoint(const std::string cgroupType) {
     std::ifstream output("/proc/mounts");
     std::string line;
-    // /proc/mounts has 6 fields per line, one mount per line, e.g.
+    // /proc/mounts has 6 fields per line, one mount per line, e.g.:
     // cgroup /sys/fs/cgroup/devices cgroup rw,relatime,devices 0 0
     while (std::getline(output, line)) {
         std::string fsSpec, fsFile, fsVfstype, fsMntops, fsFreq, fsPassno;
@@ -120,13 +148,13 @@ std::string FimdUtil::findCgroupMountpoint(const std::string cgroupType) {
 }
 
 /**
- * returns the relative path to the cgroup docker is running in
+ * Returns the relative path to the cgroup docker is running in.
  */
 std::string FimdUtil::getThisCgroup(const std::string cgroupType, const std::string runtime) {
     std::ifstream dockerpid("/var/run/docker.pid");
     std::string line;
     std::getline(dockerpid, line);
-    // split by \n, check if len == 0 || len result[0] == 0
+    // Split by \n, check if len == 0 || len result[0] == 0.
     int pid = atoi(line.c_str());
 
     std::stringstream ss;
