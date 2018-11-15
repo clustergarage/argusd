@@ -1,18 +1,18 @@
 /**
  * MIT License
- * 
+ *
  * Copyright (c) 2018 ClusterGarage
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -62,29 +62,29 @@ int main(int argc, char **argv) {
     };
 
     std::shared_ptr<grpc::ServerCredentials> credentials;
-	if (FLAGS_tls) {
-		if (FLAGS_tlscertfile == "" ||
-			FLAGS_tlskeyfile == "") {
-			LOG(WARNING) << "Certificate/private key not supplied (with -tls flag).";
-			return 1;
-		}
+    if (FLAGS_tls) {
+        if (FLAGS_tlscertfile == "" ||
+            FLAGS_tlskeyfile == "") {
+            LOG(WARNING) << "Certificate/private key not supplied (with -tls flag).";
+            return 1;
+        }
         std::string key(readfile(FLAGS_tlskeyfile));
         std::string cert(readfile(FLAGS_tlscertfile));
-		// The client must present a cert every time a call is made, else it
-		// will only happen once when the first connection is made.
-		// The other options can be found here:
-		// http://www.grpc.io/grpc/core/grpc__security__constants_8h.html#a29ffe63a8bb3b4945ecab42d82758f09
+        // The client must present a cert every time a call is made, else it
+        // will only happen once when the first connection is made.
+        // The other options can be found here:
+        // http://www.grpc.io/grpc/core/grpc__security__constants_8h.html#a29ffe63a8bb3b4945ecab42d82758f09
         grpc::SslServerCredentialsOptions sslopts(GRPC_SSL_REQUEST_AND_REQUIRE_CLIENT_CERTIFICATE_AND_VERIFY);
         grpc::SslServerCredentialsOptions::PemKeyCertPair keycert = {key, cert};
         sslopts.pem_key_cert_pairs.push_back(keycert);
-		if (FLAGS_tlscafile != "") {
-			sslopts.pem_root_certs = readfile(FLAGS_tlscafile);
-		}
+        if (FLAGS_tlscafile != "") {
+            sslopts.pem_root_certs = readfile(FLAGS_tlscafile);
+        }
         credentials = grpc::SslServerCredentials(sslopts);
 
-		//std::shared_ptr<fimd::FimdAuthMetadataProcessor> authproc(new fimd::FimdAuthMetadataProcessor());
-		//credentials->SetAuthMetadataProcessor(authproc);
-	} else {
+        //std::shared_ptr<fimd::FimdAuthMetadataProcessor> authproc(new fimd::FimdAuthMetadataProcessor());
+        //credentials->SetAuthMetadataProcessor(authproc);
+    } else {
         credentials = grpc::InsecureServerCredentials();
     }
 

@@ -51,7 +51,7 @@ namespace fimd {
 /**
  * Default logging format. Specifiers that can be used:
  *   `pod`      Name of the pod.
- *   `node`		Name of the node.
+ *   `node`     Name of the node.
  *   `event`    `inotify` event that was observed.
  *   `path`     Name of the directory path.
  *   `file`     Name of the file.
@@ -416,18 +416,24 @@ void FimdImpl::startMessageQueue(const std::string logFormat, const std::string 
                     fmt::arg("node", nodeName),
                     fmt::arg("tags", subject != nullptr ? getTagListFromSubject(subject) : ""));
                 LOG(INFO) << fmt::to_string(out);
+
+                // Free `calloc`ed memory that was put into mq from fimnotify.
+                free(fwevent->path_name);
+                free(fwevent->file_name);
             } catch(const std::exception &e) {
                 LOG(WARNING) << "Malformed FimWatcher `.spec.logFormat`: \"" << e.what() << "\"";
             }
 
-            auto metric = std::make_shared<fim::FimdMetricsHandle>();
-            metric->set_fimwatcher(name);
-            std::transform(maskStr.begin(), maskStr.end(), maskStr.begin(), ::tolower);
-            metric->set_event(maskStr);
-            metric->set_nodename(nodeName);
-            // Record event to metrics writer to be put into Prometheus.
-            if (!metricsWriter_->Write(*metric)) {
-                // Broken stream.
+            if (metricsWriter_ != nullptr) {
+                auto metric = std::make_shared<fim::FimdMetricsHandle>();
+                metric->set_fimwatcher(name);
+                std::transform(maskStr.begin(), maskStr.end(), maskStr.begin(), ::tolower);
+                metric->set_event(maskStr);
+                metric->set_nodename(nodeName);
+                // Record event to metrics writer to be put into Prometheus.
+                if (!metricsWriter_->Write(*metric)) {
+                    // Broken stream.
+                }
             }
         }
     } while (!done);

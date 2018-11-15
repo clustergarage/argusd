@@ -37,7 +37,7 @@ static const int INOTIFY_READ_BUF_LEN = (100 * (sizeof(struct inotify_event) + N
 struct fimwatch_event {
     int pid, sid;
     uint32_t event_mask;
-    const char *path_name, *file_name;
+    char *path_name, *file_name;
     bool is_dir;
 };
 

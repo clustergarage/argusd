@@ -141,7 +141,7 @@ ExternalProject_Add(glog
 ExternalProject_Add(fmt
   PREFIX fmt
   GIT_REPOSITORY https://github.com/fmtlib/fmt
-  GIT_TAG 5.1.0
+  GIT_TAG 5.2.1
   CMAKE_CACHE_ARGS
     -DFMT_DOC:BOOL=OFF
     -DFMT_TEST:BOOL=OFF

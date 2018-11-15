@@ -396,12 +396,30 @@ sendevent: ; // Hack to get past label syntax error.
         .pid = watch->pid,
         .sid = watch->sid,
         .event_mask = event->mask,
-        // Name of the watched directory.
-        .path_name = path,
-        // Name of the file.
-        .file_name = event->len ? event->name : "",
+        .path_name = "",
+        .file_name = "",
         .is_dir = (event->mask & IN_ISDIR)
     };
+    // Name of the watched directory.
+    fwevent.path_name = (char *)calloc(strlen(path), sizeof(char));
+    if (fwevent.path_name == NULL) {
+#if DEBUG
+        perror("calloc");
+#endif
+    }
+    strncpy(fwevent.path_name, path, strlen(path));
+    // Name of the file.
+    if (event->len) {
+        fwevent.file_name = (char *)calloc(event->len, sizeof(char));
+        if (fwevent.file_name == NULL) {
+#if DEBUG
+            perror("calloc");
+#endif
+        }
+        strncpy(fwevent.file_name, event->name, event->len);
+    } else {
+        fwevent.file_name = "";
+    }
 
 #if DEBUG
     printf("send event: path = %s; file: %s; event mask = %d; dir: %d\n", fwevent.path_name,
