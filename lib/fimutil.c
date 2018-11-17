@@ -31,6 +31,12 @@
 
 #include "fimutil.h"
 
+/**
+ * @TODO: document this
+ *
+ * @param pid
+ * @param ns
+ */
 void join_namespace(const pid_t pid, const char *ns) {
     char file[1024];
     int fd;

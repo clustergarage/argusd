@@ -32,32 +32,37 @@
 namespace fimd {
 class FimdUtil {
 public:
-    static std::string findContainerRuntime(const std::string containerId);
-    static int getPidForContainer(std::string id, const std::string runtime);
+    static std::string findContainerRuntime(std::string containerId);
+    static int getPidForContainer(std::string id, std::string runtime);
 
     /**
-     * Helper function to erase substring `t` from string `s`.
+     * Helper function to erase substring `sub` from string `str`.
+     *
+     * @param str
+     * @param sub
      */
-    static inline std::string eraseSubstr(const std::string &s, const std::string &t) {
-        std::string str(s.c_str());
-        size_t pos = s.find(t);
+    static inline void eraseSubstr(std::string &str, const std::string &sub) {
+        size_t pos = str.find(sub);
         if (pos != std::string::npos) {
-            str.erase(pos, t.length());
+            str.erase(pos, sub.length());
         }
-        return str;
     }
 
 private:
     static std::vector<std::string> fglob(const std::string &pattern);
-    static std::string findCgroupMountpoint(const std::string cgroupType);
-    static std::string getThisCgroup(const std::string cgroupType, const std::string runtime);
+    static std::string findCgroupMountpoint(std::string cgroupType);
+    static std::string getThisCgroup(std::string cgroupType);
 
 private:
     /**
-     * Helper function to split string `s` by a character deliminator.
+     * Helper function to split string `str` by a character deliminator.
+     *
+     * @param str
+     * @param delim
+     * @return
      */
-    static inline std::vector<std::string> split(const std::string &s, char delim) {
-        std::stringstream ss(s);
+    static inline std::vector<std::string> split(const std::string &str, const char delim) {
+        std::stringstream ss(str);
         std::string item;
         std::vector<std::string> tokens;
         while (std::getline(ss, item, delim)) {

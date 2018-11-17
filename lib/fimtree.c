@@ -40,6 +40,8 @@
 /**
  * Duplicate the path names supplied on the command line, perform some sanity
  * checking along the way.
+ *
+ * @param watch
  */
 void copy_root_paths(struct fimwatch *watch) {
     int i, j;
@@ -105,6 +107,10 @@ void copy_root_paths(struct fimwatch *watch) {
 /**
  * Return the address of the element in `rootpaths` that points to a string
  * matching `path`, or NULL if there is no match.
+ *
+ * @param watch
+ * @param path
+ * @return
  */
 char **find_root_path(const struct fimwatch *watch, const char *path) {
     int i;
@@ -120,6 +126,9 @@ char **find_root_path(const struct fimwatch *watch, const char *path) {
 /**
  * Ceased to monitor a root path name (probably because it was renamed). Remove
  * this path from the root path list.
+ *
+ * @param watch
+ * @param path
  */
 void remove_root_path(struct fimwatch *watch, const char *path) {
     char **p = find_root_path(watch, path);
@@ -149,6 +158,10 @@ void remove_root_path(struct fimwatch *watch, const char *path) {
  * Check if we should ignore path in the recursive tree check. If watching for
  * only directories and path is a file, ignore. If `ignore` list is provided
  * and matches this path, ignore.
+ *
+ * @param watch
+ * @param path
+ * @return
  */
 bool should_ignore_path(struct fimwatch *watch, const char *path) {
     struct stat sb;
@@ -186,9 +199,13 @@ bool should_ignore_path(struct fimwatch *watch, const char *path) {
  * Add `path` to the watch list of the `inotify` file descriptor. The process
  * is not recursive. Returns number of watches/cache entries added for this
  * subtree.
+ *
+ * @param watch
+ * @param path
+ * @return
  */
 int watch_path(struct fimwatch *watch, const char *path) {
-    int wd, slot;
+    int wd;
 
     // Dont add non-directories unless directly specified by `rootpaths` and
     // `only_dir` flag is false.
@@ -233,19 +250,21 @@ int watch_path(struct fimwatch *watch, const char *path) {
 #endif
 
     watch->wd = realloc(watch->wd, (watch->pathc + 1) * sizeof(int));
-#if DEBUG
     if (watch->wd == NULL) {
+#if DEBUG
         perror("realloc");
-    }
 #endif
+        return -1;
+    }
     watch->wd[watch->pathc] = wd;
 
     watch->paths = realloc(watch->paths, (watch->pathc + 1) * sizeof(char *));
-#if DEBUG
     if (watch->paths == NULL) {
+#if DEBUG
         perror("realloc");
-    }
 #endif
+        return -1;
+    }
     watch->paths[watch->pathc] = strdup(path);
 
     ++watch->pathc;
@@ -257,6 +276,10 @@ int watch_path(struct fimwatch *watch, const char *path) {
  * Add `path` to the watch list of the `inotify` file descriptor. The process
  * is recursive: watch items are also created for all of the subdirectories of
  * `path`. Returns number of watches/cache entries added for this subtree.
+ *
+ * @param watch
+ * @param path
+ * @return
  */
 int watch_path_recursive(struct fimwatch *watch, const char *path) {
     /**
@@ -264,6 +287,12 @@ int watch_path_recursive(struct fimwatch *watch, const char *path) {
      * for each directory in the tree. Each successful call to this function
      * should return 0 to indicate to `nftw` that the tree traversal should
      * continue.
+     *
+     * @param path
+     * @param sb
+     * @param tflag
+     * @param ftwbuf
+     * @return
      */
     int traverse_tree(const char *path, const struct stat *sb, int tflag, struct FTW *ftwbuf) {
         int i;
@@ -308,6 +337,8 @@ int watch_path_recursive(struct fimwatch *watch, const char *path) {
 /**
  * Add watches and cache entries for a subtree, logging a message noting the
  * number entries added.
+ *
+ * @param watch
  */
 void watch_subtree(struct fimwatch *watch) {
     int i;
@@ -329,6 +360,12 @@ void watch_subtree(struct fimwatch *watch) {
  * The directory `oldpathpf`/`oldname` was renamed to `newpathpf`/`newname`.
  * Fix up cache entries for `oldpathpf`/`oldname` and all of its subdirectories
  * to reflect the change.
+ *
+ * @param watch
+ * @param oldpathpf
+ * @param oldname
+ * @param newpathpf
+ * @param newname
  */
 void rewrite_cached_paths(const struct fimwatch *watch, const char *oldpathpf, const char *oldname,
     const char *newpathpf, const char *newname) {
@@ -370,6 +407,10 @@ void rewrite_cached_paths(const struct fimwatch *watch, const char *oldpathpf, c
  * Remove watches and cache entries for directory `path` and all of its
  * subdirectories. Returns number of entries that we (tried to) remove, or -1
  * if an `inotify_rm_watch` call failed.
+ *
+ * @param watch
+ * @param path
+ * @return
  */
 int remove_subtree(const struct fimwatch *watch, char *path) {
     size_t len = strlen(path);

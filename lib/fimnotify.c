@@ -41,19 +41,18 @@
 #include "fimtree.h"
 #include "fimutil.h"
 
-// Get access to shared variables from fimcache.
-extern struct fimwatch *wlcache;
-
 /**
  * When the cache is in an unrecoverable state, we discard the current
  * `inotify` file descriptor `oldfd` and create a new one (returned as the
  * function result), and remove and rebuild the cache. If `oldfd` is -1, this
  * is the initial build of the cache, or an explicitly requested cache rebuild,
  * so we are a little less verbose. `event_mask` can be reinitialized this way.
+ *
+ * @param watch
+ * @return
  */
 static int reinitialize(struct fimwatch *watch) {
-    int fd;
-    int i, slot;
+    int fd, slot;
     bool rebuild = watch->fd != EOF;
 
     if (rebuild) {
@@ -70,7 +69,7 @@ static int reinitialize(struct fimwatch *watch) {
 #if DEBUG
         perror("inotify_init1");
 #endif
-        return EOF;
+        return -1;
     }
     watch->fd = fd;
 #if DEBUG
@@ -90,7 +89,7 @@ static int reinitialize(struct fimwatch *watch) {
     }
 
 #if DEBUG
-    int cnt;
+    int i, cnt;
     for (i = 0, cnt = 0; i < wlcachec; ++i) {
         if (wlcache[i].pid != watch->pid ||
             wlcache[i].sid != watch->sid) {
@@ -119,13 +118,19 @@ static int reinitialize(struct fimwatch *watch) {
  * In most cases, a single event is consumed, but if there is an
  * IN_MOVED_FROM+IN_MOVED_TO pair that share a cookie value, both events are
  * consumed returns the number of bytes in the event(s) consumed from `ptr`.
+ *
+ * @param watch
+ * @param ptr
+ * @param len
+ * @param first
+ * @return
  */
-static size_t process_next_inotify_event(struct fimwatch *watch, char *ptr, int len, bool first) {
+static size_t process_next_inotify_event(struct fimwatch *watch, const char *ptr, size_t len, bool first) {
     const struct inotify_event *event = (const struct inotify_event *)ptr;
-    char *path;
+    char *path = NULL;
     char fullpath[PATH_MAX + NAME_MAX];
     size_t evtlen;
-    int slot, wdslot;
+    int slot = -1, wdslot;
 
     if (event->wd != EOF) {
         path = wd_to_path_name(watch, event->wd);
@@ -186,7 +191,7 @@ static size_t process_next_inotify_event(struct fimwatch *watch, char *ptr, int 
          *      a second cache for the grandchild would leave the cache in a
          *      confused state).
          */
-        if (!path_name_to_cache_slot(watch, fullpath) > -1) {
+        if (path_name_to_cache_slot(watch, fullpath) == -1) {
             wdslot = wd_to_cache_slot(watch, event->wd);
             if (wdslot > -1 &&
                 // Only do this if watching recursively.
@@ -207,7 +212,9 @@ static size_t process_next_inotify_event(struct fimwatch *watch, char *ptr, int 
         if (find_root_path(watch, path) != NULL) {
             remove_root_path(watch, path);
         }
-        mark_cache_slot_empty(slot);
+        if (slot > -1) {
+            mark_cache_slot_empty(slot);
+        }
         // No need to remove the watch, that happens automatically.
     } else if ((event->mask & (IN_MOVED_FROM | IN_ISDIR)) == (IN_MOVED_FROM | IN_ISDIR)) {
         /**
@@ -333,7 +340,7 @@ static size_t process_next_inotify_event(struct fimwatch *watch, char *ptr, int 
             fflush(stdout);
 #endif
             // Tell caller to do another `read`.
-            return -1;
+            return (size_t)-1;
         }
     } else if (event->mask & IN_Q_OVERFLOW) {
         // When the queue overflows, some events are lost, at which point we've
@@ -391,34 +398,17 @@ static size_t process_next_inotify_event(struct fimwatch *watch, char *ptr, int 
         return sizeof(struct inotify_event) + event->len;
     }
 
-sendevent: ; // Hack to get past label syntax error.
     struct fimwatch_event fwevent = {
         .pid = watch->pid,
         .sid = watch->sid,
         .event_mask = event->mask,
-        .path_name = "",
-        .file_name = "",
-        .is_dir = (event->mask & IN_ISDIR)
+        .is_dir = (bool)(event->mask & IN_ISDIR)
     };
     // Name of the watched directory.
-    fwevent.path_name = (char *)calloc(strlen(path), sizeof(char));
-    if (fwevent.path_name == NULL) {
-#if DEBUG
-        perror("calloc");
-#endif
-    }
     strncpy(fwevent.path_name, path, strlen(path));
     // Name of the file.
     if (event->len) {
-        fwevent.file_name = (char *)calloc(event->len, sizeof(char));
-        if (fwevent.file_name == NULL) {
-#if DEBUG
-            perror("calloc");
-#endif
-        }
-        strncpy(fwevent.file_name, event->name, event->len);
-    } else {
-        fwevent.file_name = "";
+        strncpy(fwevent.file_name, event->name, strlen(event->name));
     }
 
 #if DEBUG
@@ -441,17 +431,21 @@ sendevent: ; // Hack to get past label syntax error.
 
 /**
  * Read all available `inotify` events from the file descriptor `fd`.
+ *
+ * @param watch
+ * @return
  */
-static void process_inotify_events(struct fimwatch *watch) {
+static int process_inotify_events(struct fimwatch *watch) {
     // Some systems cannot read integer variables if they are not properly
     // aligned on other systems, incorrect alignment may decrease performance
     // hence, the buffer used for reading from the `inotify` file descriptor
     // should have the same alignment as struct inotify_event.
     char buf[INOTIFY_READ_BUF_LEN] __attribute__((aligned(__alignof__(struct inotify_event))));
     ssize_t len, nr;
-    int i, evtlen, slot;
+    size_t evtlen;
+    int i;
     bool first = true;
-    char *ptr;
+    char *ptr = NULL;
     struct sigaction sa;
 
     void alarm_handler(int sig) {
@@ -466,7 +460,7 @@ static void process_inotify_events(struct fimwatch *watch) {
 #if DEBUG
         perror("sigaction");
 #endif
-        return;
+        return EOF;
     }
 
     len = read(watch->fd, buf, INOTIFY_READ_BUF_LEN);
@@ -474,12 +468,12 @@ static void process_inotify_events(struct fimwatch *watch) {
 #if DEBUG
         perror("read");
 #endif
-        return;
+        return EOF;
     } else if (len == 0) {
 #if DEBUG
         fprintf(stderr, "`read` from `inotify` fd returned 0!");
 #endif
-        return;
+        return EOF;
     }
 
     // Process each event in the buffer returned by `read` loop over all events
@@ -527,29 +521,56 @@ static void process_inotify_events(struct fimwatch *watch) {
             ualarm(0, 0);
             errno = savederr;
 
-            if (nr == -1 && errno != EINTR) {
+            if (nr == EOF && errno != EINTR) {
 #if DEBUG
                 perror("read");
 #endif
+                return EOF;
             } else if (nr == 0) {
 #if DEBUG
                 fprintf(stderr, "`read` from `inotify` fd returned 0!");
 #endif
-                return;
+                return EOF;
             }
 
             if (errno != -1) {
                 len += nr;
+#if DEBUG
+                printf("secondary `read` got %zd bytes\n", nr);
+                fflush(stdout);
+#endif
             } else {
                 // EINTR
+#if DEBUG
+                printf("secondary `read` got nothing\n");
+                fflush(stdout);
+#endif
             }
             // Start again at beginning of buffer.
             ptr = buf;
         }
     }
+    return 0;
 }
 
-int start_inotify_watcher(const int pid, const int sid, int pathc, char *paths[], int ignorec, char *ignores[],
+/**
+ * @TODO: document this
+ *
+ * @param pid
+ * @param sid
+ * @param pathc
+ * @param paths
+ * @param ignorec
+ * @param ignores
+ * @param mask
+ * @param only_dir
+ * @param recursive
+ * @param max_depth
+ * @param processevtfd
+ * @param mq
+ * @return
+ */
+int start_inotify_watcher(const int pid, const int sid, unsigned int pathc, char *paths[], unsigned int ignorec, char *ignores[],
     uint32_t mask, bool only_dir, bool recursive, int max_depth, int processevtfd, mqd_t mq) {
 
     int fd, pollc;
@@ -626,13 +647,15 @@ int start_inotify_watcher(const int pid, const int sid, int pathc, char *paths[]
         if (pollc > 0) {
             if (fds[0].revents & POLLIN) {
                 // `inotify` events are available.
-                process_inotify_events(&watch);
+                if (process_inotify_events(&watch) == EOF) {
+                    //goto exit;
+                }
             }
 
             if (fds[1].revents & POLLIN) {
                 // Anonymous pipe events are available.
                 uint64_t value;
-                int len = read(fds[1].fd, &value, sizeof(uint64_t));
+                ssize_t len = read(fds[1].fd, &value, sizeof(uint64_t));
                 if (len != EOF &&
                     (value & FIMNOTIFY_KILL)) {
                     break;
@@ -641,22 +664,25 @@ int start_inotify_watcher(const int pid, const int sid, int pathc, char *paths[]
         }
     }
 
+exit:
 #if DEBUG
     printf("  Listening for events stopped (pid = %d, sid = %d)\n", pid, sid);
     fflush(stdout);
 #endif
 
-exit:
+    // Close `inotify` file descriptor.
+    close(fd);
     // Free watch cache.
     free_cache(&watch);
-    // Close `inotify` file descriptor.
-    if (fd != EOF) {
-        close(fd);
-    }
 
     return errno ? EXIT_FAILURE : EXIT_SUCCESS;
 }
 
+/**
+ * @TODO: document this
+ *
+ * @param processfd
+ */
 void send_watcher_kill_signal(int processfd) {
     uint64_t value = FIMNOTIFY_KILL;
     if (write(processfd, &value, sizeof(value)) == EOF) {

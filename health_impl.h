@@ -7,7 +7,7 @@ namespace fimdhealth {
 class HealthImpl final : public grpc::health::v1::Health::Service {
 public:
     explicit HealthImpl() = default;
-    ~HealthImpl() = default;
+    ~HealthImpl() final = default;
 
     grpc::Status Check(grpc::ServerContext *context, const grpc::health::v1::HealthCheckRequest *request,
         grpc::health::v1::HealthCheckResponse *response) override;

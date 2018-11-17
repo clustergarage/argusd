@@ -25,6 +25,7 @@
 #include "fimd_util.h"
 
 #include <glob.h>
+#include <glog/logging.h>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -32,14 +33,17 @@
 
 namespace fimd {
 /**
- * find the container runtime given a string prefixed with a protocol
- * currently only supports docker,cri-o,rkt,containerd
+ * Find the container runtime given a string prefixed with a protocol.
+ * Currently only supports docker,cri-o,rkt,containerd.
+ *
+ * @param containerId
+ * @return
  */
 std::string FimdUtil::findContainerRuntime(const std::string containerId) {
     std::vector<std::string> runtimes{"docker", "cri-o", "rkt", "containerd"};
-    for (auto it = runtimes.cbegin(); it != runtimes.cend(); ++it) {
-        if (containerId.compare(0, (*it).length(), (*it)) == 0) {
-            return (*it);
+    for (auto runtime : runtimes) {
+        if (containerId.compare(0, runtime.length(), runtime) == 0) {
+            return runtime;
         }
     }
     // Default to docker for now.
@@ -54,53 +58,62 @@ std::string FimdUtil::findContainerRuntime(const std::string containerId) {
  *  - modified to search for newer docker containers
  *  - modified to search for newer kubernetes+docker versions
  *  - modified to search cri-o, rkt, containerd sources
+ *
+ * @param id
+ * @param runtime
+ * @return
  */
 int FimdUtil::getPidForContainer(std::string id, const std::string runtime) {
-    int pid = 0;
+    int pid = -1;
     std::vector<std::string> attempts;
 
     id += '*';
     if (runtime == "docker") {
         std::vector<std::string> cgroups{"memory", "cpu", "cpuacct", "cpuset"};
-        for (auto it = cgroups.cbegin(); it != cgroups.cend(); ++it) {
+        for (const auto &cgroup : cgroups) {
             // Memory cgroup is chosen randomly. Any cgroup used by docker
             // works.
-            std::string cgroupRoot = findCgroupMountpoint((*it));
-            std::string cgroupThis = getThisCgroup((*it), runtime);
+            std::string cgroupRoot = findCgroupMountpoint(cgroup);
+            std::string cgroupThis = getThisCgroup(cgroup);
 
-            attempts.push_back(cgroupRoot + cgroupThis + '/' + id + "/tasks");
+            attempts.emplace_back(cgroupRoot + cgroupThis + '/' + id + "/tasks");
             // With more recent lxc, cgroup will be in lxc/.
-            attempts.push_back(cgroupRoot + cgroupThis + "/lxc/" + id + "/tasks");
+            attempts.emplace_back(cgroupRoot + cgroupThis + "/lxc/" + id + "/tasks");
             // With more recent docker, cgroup will be in docker/.
-            attempts.push_back(cgroupRoot + cgroupThis + "/docker/" + id + "/tasks");
+            attempts.emplace_back(cgroupRoot + cgroupThis + "/docker/" + id + "/tasks");
             // Even more recent docker versions under systemd, use
             // docker-<id>.scope/.
-            attempts.push_back(cgroupRoot + "/system.slice/docker-" + id + ".scope/tasks");
+            attempts.emplace_back(cgroupRoot + "/system.slice/docker-" + id + ".scope/tasks");
             // Even more recent docker versions under
             // cgroup/systemd/docker/<id>/
-            attempts.push_back(cgroupRoot + "/../systemd/docker/" + id + "/tasks");
+            attempts.emplace_back(cgroupRoot + "/../systemd/docker/" + id + "/tasks");
             // Kubernetes with docker and CNI is even more different.
-            attempts.push_back(cgroupRoot + "/../systemd/kubepods/*/pod*/" + id + "/tasks");
+            attempts.emplace_back(cgroupRoot + "/../systemd/kubepods/*/pod*/" + id + "/tasks");
             // Another flavor of containers location in recent Kubernetes 1.11+.
-            attempts.push_back(cgroupRoot + cgroupThis + "/kubepods.slice/kubepods-besteffort.slice/*/docker-" + id + ".scope/tasks");
+            attempts.emplace_back(cgroupRoot + cgroupThis + "/kubepods.slice/kubepods-besteffort.slice/*/docker-" + id + ".scope/tasks");
             // When running inside of a container with recent Kubernetes 1.11+.
-            attempts.push_back(cgroupRoot + "/kubepods.slice/kubepods-besteffort.slice/*/docker-" + id + ".scope/tasks");
+            attempts.emplace_back(cgroupRoot + "/kubepods.slice/kubepods-besteffort.slice/*/docker-" + id + ".scope/tasks");
         }
     } else if (runtime == "cri-o") {
-        attempts.push_back("/var/run/crio/" + id + "/pidfile");
+        attempts.emplace_back("/var/run/crio/" + id + "/pidfile");
     } else if (runtime == "rkt") {
-        attempts.push_back("/var/lib/rkt/pods/run/" + id + "/pid");
+        attempts.emplace_back("/var/lib/rkt/pods/run/" + id + "/pid");
     } else if (runtime == "containerd") {
-        attempts.push_back("/var/run/containerd/*/*/" + id + "/init.pid");
+        attempts.emplace_back("/var/run/containerd/*/*/" + id + "/init.pid");
     }
 
-    for (auto at = attempts.begin(); at != attempts.end(); ++at) {
-        auto files = fglob(*at);
-        if (files.size() > 0) {
+    for (const auto &attempt : attempts) {
+        auto files = fglob(attempt);
+        if (!files.empty()) {
             std::ifstream output(files[0]);
             std::string line;
             std::getline(output, line);
-            pid = atoi(line.c_str());
+            char *end;
+            pid = (int)std::strtol(line.c_str(), &end, 10);
+            if (*end != '\0') {
+                LOG(ERROR) << "Could not convert " << line.c_str() << " to PID.";
+                return -1;
+            }
             break;
         }
     }
@@ -110,14 +123,17 @@ int FimdUtil::getPidForContainer(std::string id, const std::string runtime) {
 /**
  * Perform a file glob check. Takes `pattern` string and returns result of
  * matches on this glob.
+ *
+ * @param pattern
+ * @return
  */
 std::vector<std::string> FimdUtil::fglob(const std::string &pattern) {
     std::vector<std::string> filenames;
     glob_t globResult;
-    int err = glob(pattern.c_str(), GLOB_TILDE, NULL, &globResult);
+    int err = glob(pattern.c_str(), GLOB_TILDE, nullptr, &globResult);
     if (err == 0) {
         for (size_t i = 0; i < globResult.gl_pathc; ++i) {
-            filenames.push_back(std::string(globResult.gl_pathv[i]));
+            filenames.emplace_back(std::string(globResult.gl_pathv[i]));
         }
     }
     globfree(&globResult);
@@ -126,6 +142,9 @@ std::vector<std::string> FimdUtil::fglob(const std::string &pattern) {
 
 /**
  * Returns the path to the cgroup mountpoint.
+ *
+ * @param cgroupType
+ * @return
  */
 std::string FimdUtil::findCgroupMountpoint(const std::string cgroupType) {
     std::ifstream output("/proc/mounts");
@@ -137,8 +156,8 @@ std::string FimdUtil::findCgroupMountpoint(const std::string cgroupType) {
         output >> fsSpec >> fsFile >> fsVfstype >> fsMntops >> fsFreq >> fsPassno;
         if (fsVfstype == "cgroup") {
             std::vector<std::string> results = split(fsMntops, ',');
-            for (auto it = results.begin(); it != results.end(); ++it) {
-                if ((*it) == cgroupType) {
+            for (const auto &result : results) {
+                if (result == cgroupType) {
                     return fsFile;
                 }
             }
@@ -149,13 +168,21 @@ std::string FimdUtil::findCgroupMountpoint(const std::string cgroupType) {
 
 /**
  * Returns the relative path to the cgroup docker is running in.
+ *
+ * @param cgroupType
+ * @return
  */
-std::string FimdUtil::getThisCgroup(const std::string cgroupType, const std::string runtime) {
+std::string FimdUtil::getThisCgroup(const std::string cgroupType) {
     std::ifstream dockerpid("/var/run/docker.pid");
     std::string line;
     std::getline(dockerpid, line);
+    char *end;
     // Split by \n, check if len == 0 || len result[0] == 0.
-    int pid = atoi(line.c_str());
+    int pid = (int)std::strtol(line.c_str(), &end, 10);
+    if (*end != '\0') {
+        LOG(ERROR) << "Could not convert " << line.c_str() << " to PID.";
+        return "";
+    }
 
     std::stringstream ss;
     ss << "/proc/" << pid << "/cgroup";

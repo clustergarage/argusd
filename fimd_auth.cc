@@ -30,12 +30,22 @@
 #include <grpc++/grpc++.h>
 
 namespace fimd {
-grpc::Status FimdAuthMetadataProcessor::Process(const grpc::AuthMetadataProcessor::InputMetadata &authMetadata, grpc::AuthContext *context,
-    grpc::AuthMetadataProcessor::OutputMetadata *consumedAuthMetadata, grpc::AuthMetadataProcessor::OutputMetadata *responseMetadata) {
+/**
+ * @TODO: document this
+ *
+ * @param authMetadata
+ * @param context
+ * @param consumedAuthMetadata
+ * @param responseMetadata
+ * @return
+ */
+grpc::Status FimdAuthMetadataProcessor::Process(const grpc::AuthMetadataProcessor::InputMetadata &authMetadata,
+    grpc::AuthContext *context [[maybe_unused]], grpc::AuthMetadataProcessor::OutputMetadata *consumedAuthMetadata [[maybe_unused]],
+    grpc::AuthMetadataProcessor::OutputMetadata *responseMetadata [[maybe_unused]]) {
 
-    for (auto it = authMetadata.begin(); it != authMetadata.end(); ++it) {
-        std::string key(it->first.begin(), it->first.end());
-        std::string val(it->second.begin(), it->second.end());
+    for (const auto &meta : authMetadata) {
+        std::string key(meta.first.begin(), meta.first.end());
+        std::string val(meta.second.begin(), meta.second.end());
     }
     return grpc::Status::OK;
 }

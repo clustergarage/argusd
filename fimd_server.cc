@@ -63,8 +63,8 @@ int main(int argc, char **argv) {
 
     std::shared_ptr<grpc::ServerCredentials> credentials;
     if (FLAGS_tls) {
-        if (FLAGS_tlscertfile == "" ||
-            FLAGS_tlskeyfile == "") {
+        if (FLAGS_tlscertfile.empty() ||
+            FLAGS_tlskeyfile.empty()) {
             LOG(WARNING) << "Certificate/private key not supplied (with -tls flag).";
             return 1;
         }
@@ -77,7 +77,7 @@ int main(int argc, char **argv) {
         grpc::SslServerCredentialsOptions sslopts(GRPC_SSL_REQUEST_AND_REQUIRE_CLIENT_CERTIFICATE_AND_VERIFY);
         grpc::SslServerCredentialsOptions::PemKeyCertPair keycert = {key, cert};
         sslopts.pem_key_cert_pairs.push_back(keycert);
-        if (FLAGS_tlscafile != "") {
+        if (!FLAGS_tlscafile.empty()) {
             sslopts.pem_root_certs = readfile(FLAGS_tlscafile);
         }
         credentials = grpc::SslServerCredentials(sslopts);

@@ -5,7 +5,7 @@ include(ExternalProject)
 
 set(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS} -std=c++17)
 set(CMAKE_EXE_LINKER_FLAGS -static)
-set(CMAKE_BUILD_TYPE Release)
+set(CMAKE_BUILD_TYPE Debug)
 
 find_package(Threads REQUIRED)
 
@@ -137,12 +137,12 @@ ExternalProject_Add(glog
     -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
 )
 
-# Builds glog project from the git repo
+# Builds fmt project from the git repo
 ExternalProject_Add(fmt
-  PREFIX fmt
-  GIT_REPOSITORY https://github.com/fmtlib/fmt
-  GIT_TAG 5.2.1
-  CMAKE_CACHE_ARGS
+    PREFIX fmt
+    GIT_REPOSITORY https://github.com/fmtlib/fmt
+    GIT_TAG 5.2.1
+    CMAKE_CACHE_ARGS
     -DFMT_DOC:BOOL=OFF
     -DFMT_TEST:BOOL=OFF
     -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
@@ -209,5 +209,5 @@ target_link_libraries(fimd
 )
 
 # strip unnecessary symbols
-add_custom_command(TARGET fimd POST_BUILD
-  COMMAND strip -s $<TARGET_FILE:fimd>)
+#add_custom_command(TARGET fimd POST_BUILD
+#  COMMAND strip -s $<TARGET_FILE:fimd>)

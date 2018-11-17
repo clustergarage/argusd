@@ -34,10 +34,10 @@
 #include "fimcache.h"
 #include "fimutil.h"
 
-extern struct fimwatch *wlcache;
-
 /**
  * Deallocate the watch cache.
+ *
+ * @param watch
  */
 void free_cache(struct fimwatch *watch) {
     if (watch->slot == -1) {
@@ -51,6 +51,10 @@ void free_cache(struct fimwatch *watch) {
 
 /**
  * Find the position in the `wlcache` given a `pid` and `sid`.
+ *
+ * @param pid
+ * @param sid
+ * @return
  */
 int find_cached_slot(const int pid, const int sid) {
     int i;
@@ -65,6 +69,8 @@ int find_cached_slot(const int pid, const int sid) {
 
 /**
  * Check that all path names in the cache are valid and refer to directories.
+ *
+ * @param watch
  */
 void check_cache_consistency(const struct fimwatch *watch) {
     struct stat sb;
@@ -100,6 +106,9 @@ void check_cache_consistency(const struct fimwatch *watch) {
  * fimwatch object. This just moves the `wd` and `paths` position in the watch
  * object, doesn't deallocate any memory or remove the item itself from the
  * `wlcache`.
+ *
+ * @param watch
+ * @param index
  */
 void remove_item_from_cache(struct fimwatch *watch, int const index) {
     int i;
@@ -113,6 +122,10 @@ void remove_item_from_cache(struct fimwatch *watch, int const index) {
 /**
  * Check whether the cache contains the watch descriptor `wd`. If found, return
  * the slot number, otherwise return -1.
+ *
+ * @param watch
+ * @param wd
+ * @return
  */
 int find_watch(const struct fimwatch *watch, const int wd) {
     int i;
@@ -129,6 +142,10 @@ int find_watch(const struct fimwatch *watch, const int wd) {
 
 /**
  * Deallocate the watch cache.
+ *
+ * @param watch
+ * @param wd
+ * @return
  */
 int find_watch_checked(const struct fimwatch *watch, const int wd) {
     int slot = find_watch(watch, wd);
@@ -147,6 +164,8 @@ int find_watch_checked(const struct fimwatch *watch, const int wd) {
 
 /**
  * Mark a cache entry as unused.
+ *
+ * @param slot
  */
 void mark_cache_slot_empty(const int slot) {
     wlcache[slot] = (struct fimwatch){
@@ -156,7 +175,7 @@ void mark_cache_slot_empty(const int slot) {
         .fd = EOF,
         .rootpathc = 0,
         .pathc = 0,
-        .event_mask = -1,
+        .event_mask = (uint32_t)-1,
         .only_dir = false,
         .recursive = false
     };
@@ -164,9 +183,11 @@ void mark_cache_slot_empty(const int slot) {
 
 /**
  * Find a free slot in the cache.
+ *
+ * @return
  */
 int find_empty_cache_slot() {
-    int i, j;
+    int i;
     for (i = 0; i < wlcachec; ++i) {
         if (wlcache[i].slot == -1) {
             return i;
@@ -176,11 +197,12 @@ int find_empty_cache_slot() {
     wlcachec += ALLOC_INC;
 
     wlcache = realloc(wlcache, wlcachec * sizeof(struct fimwatch));
-#if DEBUG
     if (wlcache == NULL) {
+#if DEBUG
         perror("realloc");
-    }
 #endif
+        return -1;
+    }
 
     for (i = wlcachec - ALLOC_INC; i < wlcachec; ++i) {
         mark_cache_slot_empty(i);
@@ -191,6 +213,8 @@ int find_empty_cache_slot() {
 
 /**
  * Add an item to the cache.
+ *
+ * @param watch
  */
 void add_watch_to_cache(struct fimwatch *watch) {
     int slot = find_empty_cache_slot();
@@ -201,6 +225,10 @@ void add_watch_to_cache(struct fimwatch *watch) {
 /**
  * Return the cache slot that corresponds to a particular path name or -1 if
  * the path is not in the cache.
+ *
+ * @param watch
+ * @param path
+ * @return
  */
 int path_name_to_cache_slot(const struct fimwatch *watch, const char *path) {
     int i;
@@ -219,6 +247,10 @@ int path_name_to_cache_slot(const struct fimwatch *watch, const char *path) {
 /**
  * Return the pathname that corresponds to the watch descriptor `wd` or blank
  * string if the watch descriptor is not in the cache.
+ *
+ * @param watch
+ * @param wd
+ * @return
  */
 char *wd_to_path_name(const struct fimwatch *watch, const int wd) {
     int i;
@@ -233,6 +265,10 @@ char *wd_to_path_name(const struct fimwatch *watch, const int wd) {
 /**
  * Return the cache slot that corresponds to the watch descriptor `wd` or -1 if
  * the watch descriptor is not in the cache.
+ *
+ * @param watch
+ * @param wd
+ * @return
  */
 int wd_to_cache_slot(const struct fimwatch *watch, const int wd) {
     int i;
