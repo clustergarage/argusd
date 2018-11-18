@@ -22,8 +22,8 @@
  * SOFTWARE.
  */
 
-#ifndef __FIM_UTIL__
-#define __FIM_UTIL__
+#ifndef __ARGUS_UTIL__
+#define __ARGUS_UTIL__
 
 #include <mqueue.h>
 #include <stdbool.h>
@@ -34,7 +34,7 @@
 #define DEBUG 0
 #endif
 
-struct fimwatch {
+struct arguswatch {
     int pid, sid;                   // PID, Subject ID.
     int slot;                       // `wlcache` slot.
     int fd;                         // `inotify` file descriptor.
@@ -55,7 +55,7 @@ struct fimwatch {
     mqd_t mq;                       // Message queue file descriptor.
 };
 
-struct fimwatch *wlcache; // Array of cached watches.
+struct arguswatch *wlcache; // Array of cached watches.
 int wlcachec;
 
 void join_namespace(pid_t pid, const char *ns);

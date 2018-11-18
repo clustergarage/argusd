@@ -6,7 +6,7 @@
 #include <grpc/grpc.h>
 #include <grpc++/server_context.h>
 
-namespace fimdhealth {
+namespace argusdhealth {
 /**
  * Performs a health status check.
  *
@@ -75,4 +75,4 @@ void HealthImpl::ClearAll() {
     std::lock_guard<std::mutex> lock(mux_);
     statuses_.clear();
 }
-} // namespace fimdhealth
+} // namespace argusdhealth

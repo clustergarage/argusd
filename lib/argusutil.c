@@ -22,28 +22,52 @@
  * SOFTWARE.
  */
 
-#ifndef __FIM_CACHE__
-#define __FIM_CACHE__
+#define _GNU_SOURCE
+#include <errno.h>
+#include <fcntl.h>
+#include <sched.h>
+#include <stdio.h>
+#include <unistd.h>
 
-#include <stdbool.h>
+#include "argusutil.h"
 
-#include "fimutil.h"
+/**
+ * Calls `setns` to join the namespace defined by `ns` under the given `pid`.
+ *
+ * @param pid
+ * @param ns
+ */
+void join_namespace(const pid_t pid, const char *ns) {
+    char file[1024];
+    int fd;
 
-#ifndef ALLOC_INC
-#define ALLOC_INC 128
+    // Get file descriptor for namespace.
+    sprintf(file, "/proc/%d/ns/%s", pid, ns);
+    fd = open(file, O_RDONLY | O_CLOEXEC);
+    if (fd == EOF) {
+#if DEBUG
+        perror("open");
+#endif
+        goto exit;
+    }
+
+    // Join namespace.
+    if (setns(fd, CLONE_NEWNS) == EOF) {
+#if DEBUG
+        fprintf(stderr, "Cannot perform `setns` (%d)\n", errno);
+        perror("setns");
+#endif
+        goto exit;
+    }
+
+#if DEBUG
+    printf("Joined namespace: %s.\n", file);
+    fflush(stdout);
 #endif
 
-void free_cache(struct fimwatch *cache);
-int find_cached_slot(int pid, int sid);
-void check_cache_consistency(const struct fimwatch *watch);
-void remove_item_from_cache(struct fimwatch *watch, int index);
-int find_watch(const struct fimwatch *watch, int wd);
-int find_watch_checked(const struct fimwatch *watch, int wd);
-void mark_cache_slot_empty(int slot);
-int find_empty_cache_slot();
-void add_watch_to_cache(struct fimwatch *watch);
-int path_name_to_cache_slot(const struct fimwatch *watch, const char *path);
-char *wd_to_path_name(const struct fimwatch *watch, int wd);
-int wd_to_cache_slot(const struct fimwatch *watch, int wd);
-
-#endif
+exit:
+    // Close namespace file descriptor.
+    if (fd != EOF) {
+        close(fd);
+    }
+}

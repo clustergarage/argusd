@@ -36,10 +36,10 @@
 #include <sys/inotify.h>
 #include <unistd.h>
 
-#include "fimnotify.h"
-#include "fimcache.h"
-#include "fimtree.h"
-#include "fimutil.h"
+#include "argusnotify.h"
+#include "arguscache.h"
+#include "argustree.h"
+#include "argusutil.h"
 
 /**
  * When the cache is in an unrecoverable state, we discard the current
@@ -51,7 +51,7 @@
  * @param watch
  * @return
  */
-static int reinitialize(struct fimwatch *watch) {
+static int reinitialize(struct arguswatch *watch) {
     int fd, slot;
     bool rebuild = watch->fd != EOF;
 
@@ -125,7 +125,7 @@ static int reinitialize(struct fimwatch *watch) {
  * @param first
  * @return
  */
-static size_t process_next_inotify_event(struct fimwatch *watch, const char *ptr, size_t len, bool first) {
+static size_t process_next_inotify_event(struct arguswatch *watch, const char *ptr, size_t len, bool first) {
     const struct inotify_event *event = (const struct inotify_event *)ptr;
     char *path = NULL;
     char fullpath[PATH_MAX + NAME_MAX];
@@ -398,27 +398,27 @@ static size_t process_next_inotify_event(struct fimwatch *watch, const char *ptr
         return sizeof(struct inotify_event) + event->len;
     }
 
-    struct fimwatch_event fwevent = {
+    struct arguswatch_event awevent = {
         .pid = watch->pid,
         .sid = watch->sid,
         .event_mask = event->mask,
         .is_dir = (bool)(event->mask & IN_ISDIR)
     };
     // Name of the watched directory.
-    strncpy(fwevent.path_name, path, strlen(path));
+    strncpy(awevent.path_name, path, strlen(path));
     // Name of the file.
     if (event->len) {
-        strncpy(fwevent.file_name, event->name, strlen(event->name));
+        strncpy(awevent.file_name, event->name, strlen(event->name));
     }
 
 #if DEBUG
-    printf("send event: path = %s; file: %s; event mask = %d; dir: %d\n", fwevent.path_name,
-        fwevent.file_name, fwevent.event_mask, fwevent.is_dir);
+    printf("send event: path = %s; file: %s; event mask = %d; dir: %d\n", awevent.path_name,
+        awevent.file_name, awevent.event_mask, awevent.is_dir);
     fflush(stdout);
 #endif
 
     // Send new event to the calling process via mqueue.
-    if (mq_send(watch->mq, (const char *)&fwevent, sizeof(fwevent), 0) == EOF) {
+    if (mq_send(watch->mq, (const char *)&awevent, sizeof(awevent), 0) == EOF) {
 #if DEBUG
         perror("mq_send");
 #endif
@@ -435,7 +435,7 @@ static size_t process_next_inotify_event(struct fimwatch *watch, const char *ptr
  * @param watch
  * @return
  */
-static int process_inotify_events(struct fimwatch *watch) {
+static int process_inotify_events(struct arguswatch *watch) {
     // Some systems cannot read integer variables if they are not properly
     // aligned on other systems, incorrect alignment may decrease performance
     // hence, the buffer used for reading from the `inotify` file descriptor
@@ -586,15 +586,15 @@ int start_inotify_watcher(const int pid, const int sid, unsigned int pathc, char
     sigaddset(&sigmask, SIGCHLD);
 
     // To keep this function idempotent we need to handle both existing
-    // fimwatch configuration updates as well as new ones. `inotify_add_watch`
+    // arguswatch configuration updates as well as new ones. `inotify_add_watch`
     // will also handle updates properly if a wd exists for the supplied path.
-    struct fimwatch watch;
+    struct arguswatch watch;
     int slot = find_cached_slot(pid, sid);
     if (slot > -1) {
         watch = wlcache[slot];
     } else {
-        // Create new fimwatch placeholder struct, to be filled later.
-        watch = (struct fimwatch){
+        // Create new arguswatch placeholder struct, to be filled later.
+        watch = (struct arguswatch){
             .pid = pid,
             .sid = sid,
             .slot = -1,
@@ -662,7 +662,7 @@ int start_inotify_watcher(const int pid, const int sid, unsigned int pathc, char
                 uint64_t value;
                 ssize_t len = read(fds[1].fd, &value, sizeof(uint64_t));
                 if (len != EOF &&
-                    (value & FIMNOTIFY_KILL)) {
+                    (value & ARGUSNOTIFY_KILL)) {
                     break;
                 }
             }
@@ -690,7 +690,7 @@ exit:
  * @param processfd
  */
 void send_watcher_kill_signal(int processfd) {
-    uint64_t value = FIMNOTIFY_KILL;
+    uint64_t value = ARGUSNOTIFY_KILL;
     if (write(processfd, &value, sizeof(value)) == EOF) {
 #if DEBUG
         perror("write");

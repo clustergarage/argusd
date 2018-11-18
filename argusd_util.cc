@@ -22,7 +22,7 @@
  * SOFTWARE.
  */
 
-#include "fimd_util.h"
+#include "argusd_util.h"
 
 #include <glob.h>
 #include <glog/logging.h>
@@ -31,7 +31,7 @@
 #include <string>
 #include <vector>
 
-namespace fimd {
+namespace argusd {
 /**
  * Find the container runtime given a string prefixed with a protocol.
  * Currently only supports docker,cri-o,rkt,containerd.
@@ -39,7 +39,7 @@ namespace fimd {
  * @param containerId
  * @return
  */
-std::string FimdUtil::findContainerRuntime(const std::string containerId) {
+std::string ArgusdUtil::findContainerRuntime(const std::string containerId) {
     std::vector<std::string> runtimes{"docker", "cri-o", "rkt", "containerd"};
     for (auto runtime : runtimes) {
         if (containerId.compare(0, runtime.length(), runtime) == 0) {
@@ -63,7 +63,7 @@ std::string FimdUtil::findContainerRuntime(const std::string containerId) {
  * @param runtime
  * @return
  */
-int FimdUtil::getPidForContainer(std::string id, const std::string runtime) {
+int ArgusdUtil::getPidForContainer(std::string id, const std::string runtime) {
     int pid = -1;
     std::vector<std::string> attempts;
 
@@ -127,7 +127,7 @@ int FimdUtil::getPidForContainer(std::string id, const std::string runtime) {
  * @param pattern
  * @return
  */
-std::vector<std::string> FimdUtil::fglob(const std::string &pattern) {
+std::vector<std::string> ArgusdUtil::fglob(const std::string &pattern) {
     std::vector<std::string> filenames;
     glob_t globResult;
     int err = glob(pattern.c_str(), GLOB_TILDE, nullptr, &globResult);
@@ -146,7 +146,7 @@ std::vector<std::string> FimdUtil::fglob(const std::string &pattern) {
  * @param cgroupType
  * @return
  */
-std::string FimdUtil::findCgroupMountpoint(const std::string cgroupType) {
+std::string ArgusdUtil::findCgroupMountpoint(const std::string cgroupType) {
     std::ifstream output("/proc/mounts");
     std::string line;
     // /proc/mounts has 6 fields per line, one mount per line, e.g.:
@@ -172,7 +172,7 @@ std::string FimdUtil::findCgroupMountpoint(const std::string cgroupType) {
  * @param cgroupType
  * @return
  */
-std::string FimdUtil::getThisCgroup(const std::string cgroupType) {
+std::string ArgusdUtil::getThisCgroup(const std::string cgroupType) {
     std::ifstream dockerpid("/var/run/docker.pid");
     std::string line;
     std::getline(dockerpid, line);
@@ -195,4 +195,4 @@ std::string FimdUtil::getThisCgroup(const std::string cgroupType) {
     }
     return "";
 }
-} // namespace fimd
+} // namespace argusd

@@ -1,9 +1,9 @@
 #ifndef _HEALTHIMPL_H
 #define _HEALTHIMPL_H
 
-#include "fim-proto/c++/health.grpc.pb.h"
+#include "argus-proto/c++/health.grpc.pb.h"
 
-namespace fimdhealth {
+namespace argusdhealth {
 class HealthImpl final : public grpc::health::v1::Health::Service {
 public:
     explicit HealthImpl() = default;
@@ -20,6 +20,6 @@ private:
     std::mutex mux_;
     std::map<const grpc::string, grpc::health::v1::HealthCheckResponse::ServingStatus> statuses_;
 };
-} // namespace fimdhealth
+} // namespace argusdhealth
 
 #endif

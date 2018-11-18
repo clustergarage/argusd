@@ -31,15 +31,15 @@
 #include <sys/inotify.h>
 #include <sys/stat.h>
 
-#include "fimcache.h"
-#include "fimutil.h"
+#include "arguscache.h"
+#include "argusutil.h"
 
 /**
  * Deallocate the watch cache.
  *
  * @param watch
  */
-void free_cache(struct fimwatch *watch) {
+void free_cache(struct arguswatch *watch) {
     if (watch->slot == -1) {
         return;
     }
@@ -72,7 +72,7 @@ int find_cached_slot(const int pid, const int sid) {
  *
  * @param watch
  */
-void check_cache_consistency(const struct fimwatch *watch) {
+void check_cache_consistency(const struct arguswatch *watch) {
     struct stat sb;
     int i, j;
 
@@ -103,14 +103,14 @@ void check_cache_consistency(const struct fimwatch *watch) {
 
 /**
  * When checking cache consistency, remove an item at `index` in a given
- * fimwatch object. This just moves the `wd` and `paths` position in the watch
+ * arguswatch object. This just moves the `wd` and `paths` position in the watch
  * object, doesn't deallocate any memory or remove the item itself from the
  * `wlcache`.
  *
  * @param watch
  * @param index
  */
-void remove_item_from_cache(struct fimwatch *watch, int const index) {
+void remove_item_from_cache(struct arguswatch *watch, int const index) {
     int i;
     for (i = index; i < watch->pathc - 1; ++i) {
         watch->wd[i] = watch->wd[i + 1];
@@ -127,7 +127,7 @@ void remove_item_from_cache(struct fimwatch *watch, int const index) {
  * @param wd
  * @return
  */
-int find_watch(const struct fimwatch *watch, const int wd) {
+int find_watch(const struct arguswatch *watch, const int wd) {
     int i;
     if (watch->slot == -1) {
         return -1;
@@ -147,7 +147,7 @@ int find_watch(const struct fimwatch *watch, const int wd) {
  * @param wd
  * @return
  */
-int find_watch_checked(const struct fimwatch *watch, const int wd) {
+int find_watch_checked(const struct arguswatch *watch, const int wd) {
     int slot = find_watch(watch, wd);
     if (slot > -1) {
         return slot;
@@ -168,7 +168,7 @@ int find_watch_checked(const struct fimwatch *watch, const int wd) {
  * @param slot
  */
 void mark_cache_slot_empty(const int slot) {
-    wlcache[slot] = (struct fimwatch){
+    wlcache[slot] = (struct arguswatch){
         .pid = -1,
         .sid = -1,
         .slot = -1,
@@ -196,7 +196,7 @@ int find_empty_cache_slot() {
     // No free slot found; resize cache.
     wlcachec += ALLOC_INC;
 
-    wlcache = realloc(wlcache, wlcachec * sizeof(struct fimwatch));
+    wlcache = realloc(wlcache, wlcachec * sizeof(struct arguswatch));
     if (wlcache == NULL) {
 #if DEBUG
         perror("realloc");
@@ -216,7 +216,7 @@ int find_empty_cache_slot() {
  *
  * @param watch
  */
-void add_watch_to_cache(struct fimwatch *watch) {
+void add_watch_to_cache(struct arguswatch *watch) {
     int slot = find_empty_cache_slot();
     watch->slot = slot;
     wlcache[slot] = *watch;
@@ -230,7 +230,7 @@ void add_watch_to_cache(struct fimwatch *watch) {
  * @param path
  * @return
  */
-int path_name_to_cache_slot(const struct fimwatch *watch, const char *path) {
+int path_name_to_cache_slot(const struct arguswatch *watch, const char *path) {
     int i;
     if (watch->slot == -1 ||
         wlcache[watch->slot].pathc == -1) {
@@ -252,7 +252,7 @@ int path_name_to_cache_slot(const struct fimwatch *watch, const char *path) {
  * @param wd
  * @return
  */
-char *wd_to_path_name(const struct fimwatch *watch, const int wd) {
+char *wd_to_path_name(const struct arguswatch *watch, const int wd) {
     int i;
     for (i = 0; i < watch->pathc; ++i) {
         if (watch->wd[i] == wd) {
@@ -270,7 +270,7 @@ char *wd_to_path_name(const struct fimwatch *watch, const int wd) {
  * @param wd
  * @return
  */
-int wd_to_cache_slot(const struct fimwatch *watch, const int wd) {
+int wd_to_cache_slot(const struct arguswatch *watch, const int wd) {
     int i;
     if (watch->slot == -1) {
         return -1;

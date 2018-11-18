@@ -22,52 +22,19 @@
  * SOFTWARE.
  */
 
-#define _GNU_SOURCE
-#include <errno.h>
-#include <fcntl.h>
-#include <sched.h>
-#include <stdio.h>
-#include <unistd.h>
+#ifndef __ARGUS_TREE__
+#define __ARGUS_TREE__
 
-#include "fimutil.h"
+#include "argusutil.h"
 
-/**
- * Calls `setns` to join the namespace defined by `ns` under the given `pid`.
- *
- * @param pid
- * @param ns
- */
-void join_namespace(const pid_t pid, const char *ns) {
-    char file[1024];
-    int fd;
+void copy_root_paths(struct arguswatch *watch);
+char **find_root_path(const struct arguswatch *watch, const char *path);
+void remove_root_path(struct arguswatch *watch, const char *path);
+bool should_ignore_path(struct arguswatch *watch, const char *path);
+int watch_path(struct arguswatch *watch, const char *path);
+int watch_path_recursive(struct arguswatch *watch, const char *path);
+void watch_subtree(struct arguswatch *watch);
+void rewrite_cached_paths(const struct arguswatch *watch, const char *oldpathpf, const char *oldname, const char *newpathpf, const char *newname);
+int remove_subtree(const struct arguswatch *watch, char *path);
 
-    // Get file descriptor for namespace.
-    sprintf(file, "/proc/%d/ns/%s", pid, ns);
-    fd = open(file, O_RDONLY | O_CLOEXEC);
-    if (fd == EOF) {
-#if DEBUG
-        perror("open");
 #endif
-        goto exit;
-    }
-
-    // Join namespace.
-    if (setns(fd, CLONE_NEWNS) == EOF) {
-#if DEBUG
-        fprintf(stderr, "Cannot perform `setns` (%d)\n", errno);
-        perror("setns");
-#endif
-        goto exit;
-    }
-
-#if DEBUG
-    printf("Joined namespace: %s.\n", file);
-    fflush(stdout);
-#endif
-
-exit:
-    // Close namespace file descriptor.
-    if (fd != EOF) {
-        close(fd);
-    }
-}

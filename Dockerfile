@@ -5,8 +5,8 @@ ENV GRPC_HEALTH_PROBE_VERSION v0.2.0
 # Do this in a new folder `dockerbuild`. `build` is ignored via .dockerignore
 # for builds outside docker, so we need to make sure we name this something
 # other than `build`.
-WORKDIR /opt/fimd/dockerbuild
-COPY . /opt/fimd
+WORKDIR /opt/argusd/dockerbuild
+COPY . /opt/argusd
 RUN cmake -DCMAKE_MAKE_PROGRAM=make \
     -DCMAKE_C_COMPILER=gcc \
     -DCMAKE_CXX_COMPILER=g++ .. && \
@@ -19,8 +19,8 @@ RUN wget -qO/bin/grpc_health_probe \
   chmod +x /bin/grpc_health_probe
 
 FROM alpine:latest
-COPY --from=builder /opt/fimd/dockerbuild/fimd /
+COPY --from=builder /opt/argusd/dockerbuild/argusd /
 COPY --from=builder /bin/grpc_health_probe /bin/
 # glog requires /tmp to exist as log_dir is /tmp by default.
 COPY --from=builder /tmp /tmp
-CMD ["/fimd"]
+CMD ["/argusd"]

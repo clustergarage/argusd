@@ -1,1 +1,1 @@
-add_library(fimnotify fimnotify.c fimcache.c fimtree.c fimutil.c)
+add_library(argusnotify argusnotify.c arguscache.c argustree.c argusutil.c)

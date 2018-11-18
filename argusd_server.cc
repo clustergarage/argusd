@@ -34,9 +34,9 @@
 #include <grpc++/server_builder.h>
 #include <grpc++/security/server_credentials.h>
 
-#include "fimd_auth.h"
-#include "fimd_impl.h"
-#include "fimd_util.h"
+#include "argusd_auth.h"
+#include "argusd_impl.h"
+#include "argusd_util.h"
 #include "health_impl.h"
 
 #define PORT 50051
@@ -82,7 +82,7 @@ int main(int argc, char **argv) {
         }
         credentials = grpc::SslServerCredentials(sslopts);
 
-        //std::shared_ptr<fimd::FimdAuthMetadataProcessor> authproc(new fimd::FimdAuthMetadataProcessor());
+        //std::shared_ptr<argusd::ArgusdAuthMetadataProcessor> authproc(new argusd::ArgusdAuthMetadataProcessor());
         //credentials->SetAuthMetadataProcessor(authproc);
     } else {
         credentials = grpc::InsecureServerCredentials();
@@ -94,9 +94,9 @@ int main(int argc, char **argv) {
     grpc::ServerBuilder builder;
     builder.AddListeningPort(serverAddress, credentials);
 
-    fimd::FimdImpl fimdSvc;
-    builder.RegisterService(&fimdSvc);
-    fimdhealth::HealthImpl healthSvc;
+    argusd::ArgusdImpl argusdSvc;
+    builder.RegisterService(&argusdSvc);
+    argusdhealth::HealthImpl healthSvc;
     builder.RegisterService(&healthSvc);
 
     std::unique_ptr<grpc::Server> server(builder.BuildAndStart());

@@ -22,19 +22,31 @@
  * SOFTWARE.
  */
 
-#ifndef __FIM_TREE__
-#define __FIM_TREE__
+#include "argusd_auth.h"
 
-#include "fimutil.h"
+#include <string>
 
-void copy_root_paths(struct fimwatch *watch);
-char **find_root_path(const struct fimwatch *watch, const char *path);
-void remove_root_path(struct fimwatch *watch, const char *path);
-bool should_ignore_path(struct fimwatch *watch, const char *path);
-int watch_path(struct fimwatch *watch, const char *path);
-int watch_path_recursive(struct fimwatch *watch, const char *path);
-void watch_subtree(struct fimwatch *watch);
-void rewrite_cached_paths(const struct fimwatch *watch, const char *oldpathpf, const char *oldname, const char *newpathpf, const char *newname);
-int remove_subtree(const struct fimwatch *watch, char *path);
+#include <grpc/grpc.h>
+#include <grpc++/grpc++.h>
 
-#endif
+namespace argusd {
+/**
+ * Currently unused. Perform custom authentication actions here, if desired.
+ *
+ * @param authMetadata
+ * @param context
+ * @param consumedAuthMetadata
+ * @param responseMetadata
+ * @return
+ */
+grpc::Status ArgusdAuthMetadataProcessor::Process(const grpc::AuthMetadataProcessor::InputMetadata &authMetadata,
+    grpc::AuthContext *context [[maybe_unused]], grpc::AuthMetadataProcessor::OutputMetadata *consumedAuthMetadata [[maybe_unused]],
+    grpc::AuthMetadataProcessor::OutputMetadata *responseMetadata [[maybe_unused]]) {
+
+    for (const auto &meta : authMetadata) {
+        std::string key(meta.first.begin(), meta.first.end());
+        std::string val(meta.second.begin(), meta.second.end());
+    }
+    return grpc::Status::OK;
+}
+} // namespace argusd

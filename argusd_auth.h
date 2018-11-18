@@ -22,31 +22,18 @@
  * SOFTWARE.
  */
 
-#include "fimd_auth.h"
-
-#include <string>
+#ifndef __ARGUSD_AUTH_H__
+#define __ARGUSD_AUTH_H__
 
 #include <grpc/grpc.h>
 #include <grpc++/grpc++.h>
 
-namespace fimd {
-/**
- * Currently unused. Perform custom authentication actions here, if desired.
- *
- * @param authMetadata
- * @param context
- * @param consumedAuthMetadata
- * @param responseMetadata
- * @return
- */
-grpc::Status FimdAuthMetadataProcessor::Process(const grpc::AuthMetadataProcessor::InputMetadata &authMetadata,
-    grpc::AuthContext *context [[maybe_unused]], grpc::AuthMetadataProcessor::OutputMetadata *consumedAuthMetadata [[maybe_unused]],
-    grpc::AuthMetadataProcessor::OutputMetadata *responseMetadata [[maybe_unused]]) {
-
-    for (const auto &meta : authMetadata) {
-        std::string key(meta.first.begin(), meta.first.end());
-        std::string val(meta.second.begin(), meta.second.end());
-    }
-    return grpc::Status::OK;
-}
-} // namespace fimd
+namespace argusd {
+class ArgusdAuthMetadataProcessor : public grpc::AuthMetadataProcessor {
+public:
+    grpc::Status Process(const grpc::AuthMetadataProcessor::InputMetadata &authMetadata, grpc::AuthContext *context,
+        grpc::AuthMetadataProcessor::OutputMetadata *consumedAuthMetadata,
+        grpc::AuthMetadataProcessor::OutputMetadata *responseMetadata) GRPC_OVERRIDE;
+};
+} // namespace argusd
+#endif

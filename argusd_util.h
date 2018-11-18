@@ -22,15 +22,15 @@
  * SOFTWARE.
  */
 
-#ifndef _FIMD_UTIL_H
-#define _FIMD_UTIL_H
+#ifndef __ARGUSD_UTIL_H__
+#define __ARGUSD_UTIL_H__
 
 #include <sstream>
 #include <string>
 #include <vector>
 
-namespace fimd {
-class FimdUtil {
+namespace argusd {
+class ArgusdUtil {
 public:
     static std::string findContainerRuntime(std::string containerId);
     static int getPidForContainer(std::string id, std::string runtime);
@@ -71,6 +71,6 @@ private:
         return tokens;
     }
 };
-} // namespace fimd
+} // namespace argusd
 
 #endif

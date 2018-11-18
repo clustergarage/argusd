@@ -33,9 +33,9 @@
 #include <sys/inotify.h>
 #include <unistd.h>
 
-#include "fimtree.h"
-#include "fimcache.h"
-#include "fimutil.h"
+#include "argustree.h"
+#include "arguscache.h"
+#include "argusutil.h"
 
 /**
  * Duplicate the path names supplied on the command line, perform some sanity
@@ -43,7 +43,7 @@
  *
  * @param watch
  */
-void copy_root_paths(struct fimwatch *watch) {
+void copy_root_paths(struct arguswatch *watch) {
     int i, j;
     struct stat sb;
 
@@ -112,7 +112,7 @@ void copy_root_paths(struct fimwatch *watch) {
  * @param path
  * @return
  */
-char **find_root_path(const struct fimwatch *watch, const char *path) {
+char **find_root_path(const struct arguswatch *watch, const char *path) {
     int i;
     for (i = 0; i < watch->rootpathc; ++i) {
         if (watch->rootpaths[i] != NULL &&
@@ -130,7 +130,7 @@ char **find_root_path(const struct fimwatch *watch, const char *path) {
  * @param watch
  * @param path
  */
-void remove_root_path(struct fimwatch *watch, const char *path) {
+void remove_root_path(struct arguswatch *watch, const char *path) {
     char **p = find_root_path(watch, path);
 #if DEBUG
     printf("remove_root_path: %s\n", path);
@@ -163,7 +163,7 @@ void remove_root_path(struct fimwatch *watch, const char *path) {
  * @param path
  * @return
  */
-bool should_ignore_path(struct fimwatch *watch, const char *path) {
+bool should_ignore_path(struct arguswatch *watch, const char *path) {
     struct stat sb;
     int i;
 
@@ -204,7 +204,7 @@ bool should_ignore_path(struct fimwatch *watch, const char *path) {
  * @param path
  * @return
  */
-int watch_path(struct fimwatch *watch, const char *path) {
+int watch_path(struct arguswatch *watch, const char *path) {
     int wd;
 
     // Dont add non-directories unless directly specified by `rootpaths` and
@@ -281,7 +281,7 @@ int watch_path(struct fimwatch *watch, const char *path) {
  * @param path
  * @return
  */
-int watch_path_recursive(struct fimwatch *watch, const char *path) {
+int watch_path_recursive(struct arguswatch *watch, const char *path) {
     /**
      * Function called by `nftw` to traverse a directory tree that adds a watch
      * for each directory in the tree. Each successful call to this function
@@ -340,7 +340,7 @@ int watch_path_recursive(struct fimwatch *watch, const char *path) {
  *
  * @param watch
  */
-void watch_subtree(struct fimwatch *watch) {
+void watch_subtree(struct arguswatch *watch) {
     int i;
     for (i = 0; i < watch->rootpathc; ++i) {
         if (watch->recursive) {
@@ -367,7 +367,7 @@ void watch_subtree(struct fimwatch *watch) {
  * @param newpathpf
  * @param newname
  */
-void rewrite_cached_paths(const struct fimwatch *watch, const char *oldpathpf, const char *oldname,
+void rewrite_cached_paths(const struct arguswatch *watch, const char *oldpathpf, const char *oldname,
     const char *newpathpf, const char *newname) {
 
     char fullpath[PATH_MAX], newpf[PATH_MAX], newpath[PATH_MAX];
@@ -412,7 +412,7 @@ void rewrite_cached_paths(const struct fimwatch *watch, const char *oldpathpf, c
  * @param path
  * @return
  */
-int remove_subtree(const struct fimwatch *watch, char *path) {
+int remove_subtree(const struct arguswatch *watch, char *path) {
     size_t len = strlen(path);
     int i, j;
     int cnt = 0;

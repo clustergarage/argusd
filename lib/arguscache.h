@@ -22,18 +22,28 @@
  * SOFTWARE.
  */
 
-#ifndef _FIMD_AUTH_H
-#define _FIMD_AUTH_H
+#ifndef __ARGUS_CACHE__
+#define __ARGUS_CACHE__
 
-#include <grpc/grpc.h>
-#include <grpc++/grpc++.h>
+#include <stdbool.h>
 
-namespace fimd {
-class FimdAuthMetadataProcessor : public grpc::AuthMetadataProcessor {
-public:
-    grpc::Status Process(const grpc::AuthMetadataProcessor::InputMetadata &authMetadata, grpc::AuthContext *context,
-        grpc::AuthMetadataProcessor::OutputMetadata *consumedAuthMetadata,
-        grpc::AuthMetadataProcessor::OutputMetadata *responseMetadata) GRPC_OVERRIDE;
-};
-} // namespace fimd
+#include "argusutil.h"
+
+#ifndef ALLOC_INC
+#define ALLOC_INC 128
+#endif
+
+void free_cache(struct arguswatch *cache);
+int find_cached_slot(int pid, int sid);
+void check_cache_consistency(const struct arguswatch *watch);
+void remove_item_from_cache(struct arguswatch *watch, int index);
+int find_watch(const struct arguswatch *watch, int wd);
+int find_watch_checked(const struct arguswatch *watch, int wd);
+void mark_cache_slot_empty(int slot);
+int find_empty_cache_slot();
+void add_watch_to_cache(struct arguswatch *watch);
+int path_name_to_cache_slot(const struct arguswatch *watch, const char *path);
+char *wd_to_path_name(const struct arguswatch *watch, int wd);
+int wd_to_cache_slot(const struct arguswatch *watch, int wd);
+
 #endif

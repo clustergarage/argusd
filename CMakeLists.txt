@@ -1,11 +1,11 @@
 cmake_minimum_required(VERSION 3.10)
-project(FimD C CXX)
+project(ArgusD C CXX)
 
 include(ExternalProject)
 
 set(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS} -std=c++17)
 set(CMAKE_EXE_LINKER_FLAGS -static)
-set(CMAKE_BUILD_TYPE Debug)
+set(CMAKE_BUILD_TYPE Release)
 
 find_package(Threads REQUIRED)
 
@@ -169,33 +169,33 @@ include_directories(
   # Include generated *.pb.h files
   ${CMAKE_CURRENT_BINARY_DIR}
   ${PROJECT_SOURCE_DIR}/lib
-  ${PROJECT_SOURCE_DIR}/fim-proto
+  ${PROJECT_SOURCE_DIR}/argus-proto
   ${PROTOBUF_INCLUDE_DIR}
   ${_GFLAGS_INCLUDE_DIR}
   ${_GLOG_INCLUDE_DIR}
   ${_gRPC_INCLUDE_DIR}
   ${_FMT_INCLUDE_DIR}
 )
-add_subdirectory(lib fim-proto)
+add_subdirectory(lib argus-proto)
 
-set(_FIM_PROTO_SRCS ${PROJECT_SOURCE_DIR}/fim-proto/c++/fim.pb.cc
-  ${PROJECT_SOURCE_DIR}/fim-proto/c++/health.pb.cc)
-set(_FIM_GRPC_SRCS ${PROJECT_SOURCE_DIR}/fim-proto/c++/fim.grpc.pb.cc
-  ${PROJECT_SOURCE_DIR}/fim-proto/c++/health.grpc.pb.cc)
+set(_ARGUS_PROTO_SRCS ${PROJECT_SOURCE_DIR}/argus-proto/c++/argus.pb.cc
+  ${PROJECT_SOURCE_DIR}/argus-proto/c++/health.pb.cc)
+set(_ARGUS_GRPC_SRCS ${PROJECT_SOURCE_DIR}/argus-proto/c++/argus.grpc.pb.cc
+  ${PROJECT_SOURCE_DIR}/argus-proto/c++/health.grpc.pb.cc)
 
 # Targets
-add_executable(fimd
-  fimd_auth.cc
-  fimd_util.cc
-  fimd_impl.cc
-  fimd_server.cc
+add_executable(argusd
+  argusd_auth.cc
+  argusd_util.cc
+  argusd_impl.cc
+  argusd_server.cc
   health_impl.cc
-  ${_FIM_PROTO_SRCS}
-  ${_FIM_GRPC_SRCS}
+  ${_ARGUS_PROTO_SRCS}
+  ${_ARGUS_GRPC_SRCS}
 )
-add_dependencies(fimd fimnotify grpc glog)
-target_link_libraries(fimd
-  fimnotify
+add_dependencies(argusd argusnotify grpc glog)
+target_link_libraries(argusd
+  argusnotify
   ${_FMT_LIBFMT}
   ${_gRPC_LIBGRPCPP}
   ${_GLOG_LIBGLOG}
@@ -209,5 +209,5 @@ target_link_libraries(fimd
 )
 
 # strip unnecessary symbols
-#add_custom_command(TARGET fimd POST_BUILD
-#  COMMAND strip -s $<TARGET_FILE:fimd>)
+add_custom_command(TARGET argusd POST_BUILD
+  COMMAND strip -s $<TARGET_FILE:argusd>)

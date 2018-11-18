@@ -22,7 +22,7 @@
  * SOFTWARE.
  */
 
-#include "fimd_impl.h"
+#include "argusd_impl.h"
 
 #include <poll.h>
 #include <sys/eventfd.h>
@@ -42,32 +42,32 @@
 #include <grpc/grpc.h>
 #include <grpc++/server_context.h>
 
-#include "fimd_util.h"
+#include "argusd_util.h"
 extern "C" {
-#include "lib/fimnotify.h"
-#include "lib/fimutil.h"
+#include "lib/argusnotify.h"
+#include "lib/argusutil.h"
 }
 
-namespace fimd {
-grpc::ServerWriter<fim::FimdMetricsHandle> *FimdImpl::metricsWriter_;
+namespace argusd {
+grpc::ServerWriter<argus::ArgusdMetricsHandle> *ArgusdImpl::metricsWriter_;
 
 /**
- * CreateWatch is responsible for creating (or updating) a fim watcher. Find
+ * CreateWatch is responsible for creating (or updating) an argus watcher. Find
  * list of PIDs from the request's container IDs list. With the list of PIDs,
- * create `inotify` watchers by spawning a fimnotify process that handles the
- * filesystem-level instructions to do so an mqueue process is created to watch
- * on a pod-level mq file descriptor. That way if this pod is killed all mqueue
- * watchers go with it.
+ * create `inotify` watchers by spawning an argusnotify process that handles
+ * the filesystem-level instructions to do so an mqueue process is created to
+ * watch on a pod-level mq file descriptor. That way if this pod is killed all
+ * mqueue watchers go with it.
  *
  * @param context
  * @param request
  * @param response
  * @return
  */
-grpc::Status FimdImpl::CreateWatch(grpc::ServerContext *context [[maybe_unused]], const fim::FimdConfig *request,
-    fim::FimdHandle *response) {
+grpc::Status ArgusdImpl::CreateWatch(grpc::ServerContext *context [[maybe_unused]], const argus::ArgusdConfig *request,
+    argus::ArgusdHandle *response) {
 
-    auto pids = getPidsFromRequest(std::make_shared<fim::FimdConfig>(*request));
+    auto pids = getPidsFromRequest(std::make_shared<argus::ArgusdConfig>(*request));
     if (pids.empty()) {
         return grpc::Status::CANCELLED;
     }
@@ -75,7 +75,7 @@ grpc::Status FimdImpl::CreateWatch(grpc::ServerContext *context [[maybe_unused]]
     // Find existing watcher by pid in case we need to update
     // `inotify_add_watcher` is designed to both add and modify depending on if
     // a fd exists already for this path.
-    auto watcher = findFimdWatcherByPids(request->nodename(), pids);
+    auto watcher = findArgusdWatcherByPids(request->nodename(), pids);
     LOG(INFO) << (watcher == nullptr ? "Starting" : "Updating") << " `inotify` watcher ("
         << request->podname() << ":" << request->nodename() << ")";
     if (watcher != nullptr) {
@@ -101,9 +101,9 @@ grpc::Status FimdImpl::CreateWatch(grpc::ServerContext *context [[maybe_unused]]
 
     for_each(pids.cbegin(), pids.cend(), [&](const int pid) {
         int i = 0;
-        for_each(request->subject().cbegin(), request->subject().cend(), [&](const fim::FimWatcherSubject subject) {
+        for_each(request->subject().cbegin(), request->subject().cend(), [&](const argus::ArgusWatcherSubject subject) {
             // @TODO: Check if any watchers are started, if not, don't add to response.
-            createInotifyWatcher(response->nodename(), response->podname(), std::make_shared<fim::FimWatcherSubject>(subject),
+            createInotifyWatcher(response->nodename(), response->podname(), std::make_shared<argus::ArgusWatcherSubject>(subject),
                 pid, i, response->mutable_processeventfd(), response->mqfd());
             ++i;
         });
@@ -112,7 +112,7 @@ grpc::Status FimdImpl::CreateWatch(grpc::ServerContext *context [[maybe_unused]]
 
     if (watcher == nullptr) {
         // Store new watcher.
-        watchers_.push_back(std::make_shared<fim::FimdHandle>(*response));
+        watchers_.push_back(std::make_shared<argus::ArgusdHandle>(*response));
     } else {
         std::for_each(response->processeventfd().cbegin(), response->processeventfd().cend(), [&](const int processfd) {
             watcher->add_processeventfd(processfd);
@@ -123,21 +123,21 @@ grpc::Status FimdImpl::CreateWatch(grpc::ServerContext *context [[maybe_unused]]
 }
 
 /**
- * DestroyWatch is responsible for deleting a fim watcher. Send exit message to
- * the mqueue to stop watching for events to log. Send kill signal to the
- * fimnotify poller to stop that child process.
+ * DestroyWatch is responsible for deleting an argus watcher. Send exit message
+ * to the mqueue to stop watching for events to log. Send kill signal to the
+ * argusnotify poller to stop that child process.
  *
  * @param context
  * @param request
  * @param response
  * @return
  */
-grpc::Status FimdImpl::DestroyWatch(grpc::ServerContext *context [[maybe_unused]], const fim::FimdConfig *request,
-    fim::Empty *response [[maybe_unused]]) {
+grpc::Status ArgusdImpl::DestroyWatch(grpc::ServerContext *context [[maybe_unused]], const argus::ArgusdConfig *request,
+    argus::Empty *response [[maybe_unused]]) {
 
     LOG(INFO) << "Stopping `inotify` watcher (" << request->podname() << ":" << request->nodename() << ")";
 
-    auto watcher = findFimdWatcherByPids(request->nodename(), std::vector<int>(request->pid().cbegin(), request->pid().cend()));
+    auto watcher = findArgusdWatcherByPids(request->nodename(), std::vector<int>(request->pid().cbegin(), request->pid().cend()));
     if (watcher != nullptr) {
         // Stop existing message queue.
         sendExitMessageToMessageQueue(watcher);
@@ -159,10 +159,10 @@ grpc::Status FimdImpl::DestroyWatch(grpc::ServerContext *context [[maybe_unused]
  * @param writer
  * @return
  */
-grpc::Status FimdImpl::GetWatchState(grpc::ServerContext *context [[maybe_unused]], const fim::Empty *request [[maybe_unused]],
-    grpc::ServerWriter<fim::FimdHandle> *writer) {
+grpc::Status ArgusdImpl::GetWatchState(grpc::ServerContext *context [[maybe_unused]], const argus::Empty *request [[maybe_unused]],
+    grpc::ServerWriter<argus::ArgusdHandle> *writer) {
 
-    std::for_each(watchers_.cbegin(), watchers_.cend(), [&](const std::shared_ptr<fim::FimdHandle> watcher) {
+    std::for_each(watchers_.cbegin(), watchers_.cend(), [&](const std::shared_ptr<argus::ArgusdHandle> watcher) {
         if (!writer->Write(*watcher)) {
             // Broken stream.
         }
@@ -179,8 +179,8 @@ grpc::Status FimdImpl::GetWatchState(grpc::ServerContext *context [[maybe_unused
  * @param writer
  * @return
  */
-grpc::Status FimdImpl::RecordMetrics(grpc::ServerContext *context [[maybe_unused]], const fim::Empty *request [[maybe_unused]],
-    grpc::ServerWriter<fim::FimdMetricsHandle> *writer) {
+grpc::Status ArgusdImpl::RecordMetrics(grpc::ServerContext *context [[maybe_unused]], const argus::Empty *request [[maybe_unused]],
+    grpc::ServerWriter<argus::ArgusdMetricsHandle> *writer) {
 
     metricsWriter_ = writer;
     for (;;) {
@@ -198,12 +198,12 @@ grpc::Status FimdImpl::RecordMetrics(grpc::ServerContext *context [[maybe_unused
  * @param request
  * @return
  */
-std::vector<int> FimdImpl::getPidsFromRequest(std::shared_ptr<fim::FimdConfig> request) {
+std::vector<int> ArgusdImpl::getPidsFromRequest(std::shared_ptr<argus::ArgusdConfig> request) {
     std::vector<int> pids;
     std::for_each(request->cid().cbegin(), request->cid().cend(), [&](std::string cid) {
-        std::string runtime = FimdUtil::findContainerRuntime(cid);
+        std::string runtime = ArgusdUtil::findContainerRuntime(cid);
         cleanContainerId(cid, runtime);
-        int pid = FimdUtil::getPidForContainer(cid, runtime);
+        int pid = ArgusdUtil::getPidForContainer(cid, runtime);
         if (pid) {
             pids.push_back(pid);
         }
@@ -218,8 +218,8 @@ std::vector<int> FimdImpl::getPidsFromRequest(std::shared_ptr<fim::FimdConfig> r
  * @param pids
  * @return
  */
-std::shared_ptr<fim::FimdHandle> FimdImpl::findFimdWatcherByPids(const std::string nodeName, const std::vector<int> pids) {
-    auto it = find_if(watchers_.cbegin(), watchers_.cend(), [&](std::shared_ptr<fim::FimdHandle> watcher) {
+std::shared_ptr<argus::ArgusdHandle> ArgusdImpl::findArgusdWatcherByPids(const std::string nodeName, const std::vector<int> pids) {
+    auto it = find_if(watchers_.cbegin(), watchers_.cend(), [&](std::shared_ptr<argus::ArgusdHandle> watcher) {
         bool foundPid = false;
         for (const auto &pid : pids) {
             auto watcherPid = std::find_if(watcher->pid().cbegin(), watcher->pid().cend(),
@@ -243,7 +243,7 @@ std::shared_ptr<fim::FimdHandle> FimdImpl::findFimdWatcherByPids(const std::stri
  * @param subject
  * @return
  */
-char **FimdImpl::getPathArrayFromSubject(const int pid, std::shared_ptr<fim::FimWatcherSubject> subject) {
+char **ArgusdImpl::getPathArrayFromSubject(const int pid, std::shared_ptr<argus::ArgusWatcherSubject> subject) {
     std::vector<std::string> pathvec;
     std::for_each(subject->path().cbegin(), subject->path().cend(), [&](std::string path) {
         std::stringstream ss;
@@ -267,7 +267,7 @@ char **FimdImpl::getPathArrayFromSubject(const int pid, std::shared_ptr<fim::Fim
  * @param subject
  * @return
  */
-char **FimdImpl::getPathArrayFromIgnore(std::shared_ptr<fim::FimWatcherSubject> subject) {
+char **ArgusdImpl::getPathArrayFromIgnore(std::shared_ptr<argus::ArgusWatcherSubject> subject) {
     char **patharr = new char *[subject->ignore_size()];
     size_t i = 0;
     std::for_each(subject->ignore().cbegin(), subject->ignore().cend(), [&](std::string path) {
@@ -284,7 +284,7 @@ char **FimdImpl::getPathArrayFromIgnore(std::shared_ptr<fim::FimWatcherSubject> 
  * @param subject
  * @return
  */
-std::string FimdImpl::getTagListFromSubject(std::shared_ptr<fim::FimWatcherSubject> subject) {
+std::string ArgusdImpl::getTagListFromSubject(std::shared_ptr<argus::ArgusWatcherSubject> subject) {
     std::string tags;
     for (auto tag : subject->tags()) {
         if (!tags.empty()) {
@@ -302,7 +302,7 @@ std::string FimdImpl::getTagListFromSubject(std::shared_ptr<fim::FimWatcherSubje
  * @param subject
  * @return
  */
-uint32_t FimdImpl::getEventMaskFromSubject(std::shared_ptr<fim::FimWatcherSubject> subject) {
+uint32_t ArgusdImpl::getEventMaskFromSubject(std::shared_ptr<argus::ArgusWatcherSubject> subject) {
     uint32_t mask = 0;
     std::for_each(subject->event().cbegin(), subject->event().cend(), [&](std::string event) {
         const char *evt = event.c_str();
@@ -326,12 +326,12 @@ uint32_t FimdImpl::getEventMaskFromSubject(std::shared_ptr<fim::FimWatcherSubjec
 }
 
 /**
- * Create child processes as background threads for spawning a fimnotify
+ * Create child processes as background threads for spawning an argusnotify
  * watcher. We will create an anonymous pipe used to communicate to this
  * background thread later from this implementation; in the case of
  * updating/deleting an existing watcher. An additional cleanup thread is
  * created to specify removing the anonymous pipe in the case of an error
- * returned by the fimnotify poller.
+ * returned by the argusnotify poller.
  *
  * @param nodeName
  * @param podName
@@ -341,8 +341,8 @@ uint32_t FimdImpl::getEventMaskFromSubject(std::shared_ptr<fim::FimWatcherSubjec
  * @param eventProcessfds
  * @param mq
  */
-void FimdImpl::createInotifyWatcher(const std::string nodeName, const std::string podName,
-    std::shared_ptr<fim::FimWatcherSubject> subject, const int pid, const int sid,
+void ArgusdImpl::createInotifyWatcher(const std::string nodeName, const std::string podName,
+    std::shared_ptr<argus::ArgusWatcherSubject> subject, const int pid, const int sid,
     google::protobuf::RepeatedField<google::protobuf::int32> *eventProcessfds, const mqd_t mq) {
 
     // Create anonymous pipe to communicate with `inotify` watcher.
@@ -364,14 +364,14 @@ void FimdImpl::createInotifyWatcher(const std::string nodeName, const std::strin
     // Start as daemon process.
     taskThread.detach();
 
-    // Once the fimnotify task begins we listen for a return status in a
+    // Once the argusnotify task begins we listen for a return status in a
     // separate, cleanup thread. When this result comes back, we do any
     // necessary cleanup here, such as destroy our anonymous pipe into the
-    // fimnotify poller.
+    // argusnotify poller.
     std::thread cleanupThread([=](std::shared_future<int> res) mutable {
         res.wait();
         if (res.valid()) {
-            auto watcher = findFimdWatcherByPids(nodeName, std::vector<int>{pid});
+            auto watcher = findArgusdWatcherByPids(nodeName, std::vector<int>{pid});
             if (watcher != nullptr) {
                 eraseEventProcessfd(watcher->mutable_processeventfd(), processfd);
             }
@@ -384,7 +384,7 @@ void FimdImpl::createInotifyWatcher(const std::string nodeName, const std::strin
 
 /**
  * Create child process as a background thread to listen on an mqueue file
- * descriptor that the fimnotify process will add events that need to be logged
+ * descriptor that the argusnotify process will add events that need to be logged
  * out here.
  *
  * @param logFormat
@@ -395,8 +395,8 @@ void FimdImpl::createInotifyWatcher(const std::string nodeName, const std::strin
  * @param mq
  * @return
  */
-mqd_t FimdImpl::createMessageQueue(const std::string logFormat, const std::string name, const std::string nodeName,
-    const std::string podName, const google::protobuf::RepeatedPtrField<fim::FimWatcherSubject> subjects, mqd_t mq) {
+mqd_t ArgusdImpl::createMessageQueue(const std::string logFormat, const std::string name, const std::string nodeName,
+    const std::string podName, const google::protobuf::RepeatedPtrField<argus::ArgusWatcherSubject> subjects, mqd_t mq) {
 
     std::stringstream ss;
     ss << MQ_QUEUE_NAME << "-" << podName;
@@ -426,7 +426,7 @@ mqd_t FimdImpl::createMessageQueue(const std::string logFormat, const std::strin
 
     // Start message queue.
     std::packaged_task<void(const std::string, const std::string, const std::string, const std::string,
-        const google::protobuf::RepeatedPtrField<fim::FimWatcherSubject>,
+        const google::protobuf::RepeatedPtrField<argus::ArgusWatcherSubject>,
         const mqd_t, const std::string)> queue(startMessageQueue);
     std::thread queueThread(move(queue), logFormat, name, nodeName, podName, subjects, mq, mqPath);
     // Start as daemon process.
@@ -449,8 +449,8 @@ mqd_t FimdImpl::createMessageQueue(const std::string logFormat, const std::strin
  * @param mq
  * @param mqPath
  */
-void FimdImpl::startMessageQueue(const std::string logFormat, const std::string name, const std::string nodeName,
-    const std::string podName, const google::protobuf::RepeatedPtrField<fim::FimWatcherSubject> subjects,
+void ArgusdImpl::startMessageQueue(const std::string logFormat, const std::string name, const std::string nodeName,
+    const std::string podName, const google::protobuf::RepeatedPtrField<argus::ArgusWatcherSubject> subjects,
     const mqd_t mq, const std::string mqPath) {
 
     /**
@@ -479,44 +479,44 @@ void FimdImpl::startMessageQueue(const std::string logFormat, const std::string 
         if (!strncmp(buffer, MQ_EXIT_MESSAGE, strlen(MQ_EXIT_MESSAGE))) {
             done = true;
         } else {
-            auto fwevent = reinterpret_cast<struct fimwatch_event *>(buffer);
+            auto awevent = reinterpret_cast<struct arguswatch_event *>(buffer);
             std::regex procRegex("/proc/[0-9]+/root");
 
             std::string maskStr;
-            if (fwevent->event_mask & IN_ACCESS)             maskStr = "ACCESS";
-            else if (fwevent->event_mask & IN_ATTRIB)        maskStr = "ATTRIB";
-            else if (fwevent->event_mask & IN_CLOSE_WRITE)   maskStr = "CLOSE_WRITE";
-            else if (fwevent->event_mask & IN_CLOSE_NOWRITE) maskStr = "CLOSE_NOWRITE";
-            else if (fwevent->event_mask & IN_CREATE)        maskStr = "CREATE";
-            else if (fwevent->event_mask & IN_DELETE)        maskStr = "DELETE";
-            else if (fwevent->event_mask & IN_DELETE_SELF)   maskStr = "DELETE_SELF";
-            else if (fwevent->event_mask & IN_MODIFY)        maskStr = "MODIFY";
-            else if (fwevent->event_mask & IN_MOVE_SELF)     maskStr = "MOVE_SELF";
-            else if (fwevent->event_mask & IN_MOVED_FROM)    maskStr = "MOVED_FROM";
-            else if (fwevent->event_mask & IN_MOVED_TO)      maskStr = "MOVED_TO";
-            else if (fwevent->event_mask & IN_OPEN)          maskStr = "OPEN";
+            if (awevent->event_mask & IN_ACCESS)             maskStr = "ACCESS";
+            else if (awevent->event_mask & IN_ATTRIB)        maskStr = "ATTRIB";
+            else if (awevent->event_mask & IN_CLOSE_WRITE)   maskStr = "CLOSE_WRITE";
+            else if (awevent->event_mask & IN_CLOSE_NOWRITE) maskStr = "CLOSE_NOWRITE";
+            else if (awevent->event_mask & IN_CREATE)        maskStr = "CREATE";
+            else if (awevent->event_mask & IN_DELETE)        maskStr = "DELETE";
+            else if (awevent->event_mask & IN_DELETE_SELF)   maskStr = "DELETE_SELF";
+            else if (awevent->event_mask & IN_MODIFY)        maskStr = "MODIFY";
+            else if (awevent->event_mask & IN_MOVE_SELF)     maskStr = "MOVE_SELF";
+            else if (awevent->event_mask & IN_MOVED_FROM)    maskStr = "MOVED_FROM";
+            else if (awevent->event_mask & IN_MOVED_TO)      maskStr = "MOVED_TO";
+            else if (awevent->event_mask & IN_OPEN)          maskStr = "OPEN";
 
-            const auto subject = std::make_shared<fim::FimWatcherSubject>(subjects.Get(fwevent->sid));
+            const auto subject = std::make_shared<argus::ArgusWatcherSubject>(subjects.Get(awevent->sid));
 
             fmt::memory_buffer out;
             try {
                 fmt::format_to(out, !logFormat.empty() ? logFormat : DEFAULT_FORMAT,
                     fmt::arg("event", maskStr),
-                    fmt::arg("ftype", fwevent->is_dir ? "directory" : "file"),
-                    fmt::arg("path", std::regex_replace(fwevent->path_name, procRegex, "")),
-                    fmt::arg("file", fwevent->file_name),
-                    fmt::arg("sep", *fwevent->file_name ? "/" : ""),
+                    fmt::arg("ftype", awevent->is_dir ? "directory" : "file"),
+                    fmt::arg("path", std::regex_replace(awevent->path_name, procRegex, "")),
+                    fmt::arg("file", awevent->file_name),
+                    fmt::arg("sep", *awevent->file_name ? "/" : ""),
                     fmt::arg("pod", podName),
                     fmt::arg("node", nodeName),
                     fmt::arg("tags", subject != nullptr ? getTagListFromSubject(subject) : ""));
                 LOG(INFO) << fmt::to_string(out);
             } catch(const std::exception &e) {
-                LOG(WARNING) << "Malformed FimWatcher `.spec.logFormat`: \"" << e.what() << "\"";
+                LOG(WARNING) << "Malformed ArgusWatcher `.spec.logFormat`: \"" << e.what() << "\"";
             }
 
             if (metricsWriter_ != nullptr) {
-                auto metric = std::make_shared<fim::FimdMetricsHandle>();
-                metric->set_fimwatcher(name);
+                auto metric = std::make_shared<argus::ArgusdMetricsHandle>();
+                metric->set_arguswatcher(name);
                 std::transform(maskStr.begin(), maskStr.end(), maskStr.begin(), ::tolower);
                 metric->set_event(maskStr);
                 metric->set_nodename(nodeName);
@@ -533,11 +533,11 @@ void FimdImpl::startMessageQueue(const std::string logFormat, const std::string 
 }
 
 /**
- * Sends a message over the anonymous pipe to stop the fimnotify poller.
+ * Sends a message over the anonymous pipe to stop the argusnotify poller.
  *
  * @param watcher
  */
-void FimdImpl::sendKillSignalToWatcher(std::shared_ptr<fim::FimdHandle> watcher) {
+void ArgusdImpl::sendKillSignalToWatcher(std::shared_ptr<argus::ArgusdHandle> watcher) {
     // Kill existing watcher polls.
     std::for_each(watcher->processeventfd().cbegin(), watcher->processeventfd().cend(), [&](const int processfd) {
         send_watcher_kill_signal(processfd);
@@ -545,13 +545,13 @@ void FimdImpl::sendKillSignalToWatcher(std::shared_ptr<fim::FimdHandle> watcher)
 }
 
 /**
- * Shuts down the anonymous pipe used to communicate by the fimnotify poller
+ * Shuts down the anonymous pipe used to communicate by the argusnotify poller
  * and removes it from the stored collection of pipes.
  *
  * @param eventProcessfds
  * @param processfd
  */
-void FimdImpl::eraseEventProcessfd(google::protobuf::RepeatedField<google::protobuf::int32> *eventProcessfds, const int processfd) {
+void ArgusdImpl::eraseEventProcessfd(google::protobuf::RepeatedField<google::protobuf::int32> *eventProcessfds, const int processfd) {
     if (eventProcessfds->empty()) {
        return;
     }
@@ -568,7 +568,7 @@ void FimdImpl::eraseEventProcessfd(google::protobuf::RepeatedField<google::proto
  *
  * @param watcher
  */
-void FimdImpl::sendExitMessageToMessageQueue(std::shared_ptr<fim::FimdHandle> watcher) {
+void ArgusdImpl::sendExitMessageToMessageQueue(std::shared_ptr<argus::ArgusdHandle> watcher) {
     // In order to stop the blocking mqueue process, send a specific exit
     // message that will break it out of the loop.
     if (mq_send(watcher->mqfd(), MQ_EXIT_MESSAGE, strlen(MQ_EXIT_MESSAGE), 1) == EOF) {
@@ -577,4 +577,4 @@ void FimdImpl::sendExitMessageToMessageQueue(std::shared_ptr<fim::FimdHandle> wa
 #endif
     }
 }
-} // namespace fimd
+} // namespace argusd
