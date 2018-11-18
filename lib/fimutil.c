@@ -32,7 +32,7 @@
 #include "fimutil.h"
 
 /**
- * @TODO: document this
+ * Calls `setns` to join the namespace defined by `ns` under the given `pid`.
  *
  * @param pid
  * @param ns

@@ -31,7 +31,7 @@
 
 namespace fimd {
 /**
- * @TODO: document this
+ * Currently unused. Perform custom authentication actions here, if desired.
  *
  * @param authMetadata
  * @param context

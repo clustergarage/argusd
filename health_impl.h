@@ -17,7 +17,7 @@ public:
     void ClearAll();
 
 private:
-    std::mutex mu_;
+    std::mutex mux_;
     std::map<const grpc::string, grpc::health::v1::HealthCheckResponse::ServingStatus> statuses_;
 };
 } // namespace fimdhealth

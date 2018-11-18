@@ -554,7 +554,12 @@ static int process_inotify_events(struct fimwatch *watch) {
 }
 
 /**
- * @TODO: document this
+ * Starts the `inotify` watcher process. Acts as the `main` function if this
+ * was a standlone program. It is called from the main implementation of this
+ * daemon in a new thread each time it is invoked. Once started up, it creates
+ * the initial cache objects, traverses the tree of given paths, either
+ * recursive or not, and loops infinitely waiting for new `inotify` events
+ * until it receives a kill signal.
  *
  * @param pid
  * @param sid
@@ -679,7 +684,8 @@ exit:
 }
 
 /**
- * @TODO: document this
+ * Sends the custom kill signal to break out of the `ppoll` loop that is
+ * listening for active `inotify` watch events.
  *
  * @param processfd
  */

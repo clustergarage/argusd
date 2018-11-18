@@ -8,18 +8,19 @@
 
 namespace fimdhealth {
 /**
- * @TODO: document this
+ * Performs a health status check.
  *
  * @param context
  * @param request
  * @param response
  * @return
  */
-grpc::Status HealthImpl::Check(grpc::ServerContext *context, const grpc::health::v1::HealthCheckRequest *request,
+grpc::Status HealthImpl::Check(grpc::ServerContext *context [[maybe_unused]], const grpc::health::v1::HealthCheckRequest *request,
     grpc::health::v1::HealthCheckResponse *response) {
 
-    std::lock_guard<std::mutex> lock(mu_);
-    // if the service is empty we assume that the client wants to check the server's status
+    std::lock_guard<std::mutex> lock(mux_);
+    // If the service is empty we assume that the client wants to check the
+    // server's status.
     if (request->service().empty()) {
         response->set_status(grpc::health::v1::HealthCheckResponse::SERVING);
         return grpc::Status::OK;
@@ -35,42 +36,43 @@ grpc::Status HealthImpl::Check(grpc::ServerContext *context, const grpc::health:
 }
 
 /**
- * @TODO: document this
+ * Sets the health status for a given service.
  *
  * @param service
  * @param status
  */
-[[maybe_unused]] void HealthImpl::SetStatus(const grpc::string &service, grpc::health::v1::HealthCheckResponse::ServingStatus status) {
-    std::lock_guard<std::mutex> lock(mu_);
+void HealthImpl::SetStatus(const grpc::string &service, grpc::health::v1::HealthCheckResponse::ServingStatus status) {
+    std::lock_guard<std::mutex> lock(mux_);
     statuses_[service] = status;
 }
 
 /**
- * @TODO: document this
+ * Sets the health status for all services.
  *
  * @param status
  */
-[[maybe_unused]] void HealthImpl::SetAll(grpc::health::v1::HealthCheckResponse::ServingStatus status) {
-    std::lock_guard<std::mutex> lock(mu_);
-    for (auto iter = statuses_.begin(); iter != statuses_.end(); ++iter) {
-        iter->second = status;
+void HealthImpl::SetAll(grpc::health::v1::HealthCheckResponse::ServingStatus status) {
+    std::lock_guard<std::mutex> lock(mux_);
+    for (auto iter : statuses_) {
+        iter.second = status;
     }
 }
 
 /**
- * @TODO: document this
+ * Clears the health status for a given service.
  *
  * @param service
  */
-[[maybe_unused]] void HealthImpl::ClearStatus(const std::string &service) {
-    std::lock_guard<std::mutex> lock(mu_);
+void HealthImpl::ClearStatus(const std::string &service) {
+    std::lock_guard<std::mutex> lock(mux_);
     statuses_.erase(service);
 }
 
 /**
- * @TODO: document this
+ * Clears the health status for all services.
  */
-[[maybe_unused]] void HealthImpl::ClearAll() {
-    std::lock_guard<std::mutex> lock(mu_); statuses_.clear();
+void HealthImpl::ClearAll() {
+    std::lock_guard<std::mutex> lock(mux_);
+    statuses_.clear();
 }
 } // namespace fimdhealth
