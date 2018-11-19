@@ -28,10 +28,11 @@
 #include <sys/eventfd.h>
 #include <sys/inotify.h>
 #include <algorithm>
-#include <chrono>
+#include <condition_variable>
 #include <functional>
 #include <future>
 #include <memory>
+#include <mutex>
 #include <regex>
 #include <sstream>
 #include <string>
@@ -86,11 +87,8 @@ grpc::Status ArgusdImpl::CreateWatch(grpc::ServerContext *context [[maybe_unused
 
         // Wait for all processeventfd to be cleared. This indicates that the
         // inotify threads are finished and cleaned up.
-        for (;;) {
-            if (!watcher->processeventfd_size()) {
-                break;
-            }
-        }
+        std::unique_lock<std::mutex> lock(mux_);
+        cv_.wait(lock, [=] { return watcher->processeventfd().empty(); });
     }
 
     response->set_nodename(request->nodename().c_str());
@@ -183,12 +181,15 @@ grpc::Status ArgusdImpl::RecordMetrics(grpc::ServerContext *context [[maybe_unus
     grpc::ServerWriter<argus::ArgusdMetricsHandle> *writer) {
 
     metricsWriter_ = writer;
-    for (;;) {
-        if (metricsWriter_ == nullptr) {
-            break;
-        }
-        // Keep alive so the mq streams in new events as it gets them.
-    }
+
+    std::condition_variable cv;
+    std::mutex mux;
+    std::unique_lock<std::mutex> lock(mux);
+    // Keep alive so the mq streams in new events as it gets them.
+    cv.wait(lock, [=] {
+        return metricsWriter_ == nullptr;
+    });
+
     return grpc::Status::OK;
 }
 
@@ -374,6 +375,8 @@ void ArgusdImpl::createInotifyWatcher(const std::string nodeName, const std::str
             auto watcher = findArgusdWatcherByPids(nodeName, std::vector<int>{pid});
             if (watcher != nullptr) {
                 eraseEventProcessfd(watcher->mutable_processeventfd(), processfd);
+                // Notify the `condition_variable` of changes.
+                cv_.notify_one();
             }
             delete[] subjectPaths;
             delete[] ignorePaths;

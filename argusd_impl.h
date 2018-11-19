@@ -74,6 +74,8 @@ private:
 
     std::vector<std::shared_ptr<argus::ArgusdHandle>> watchers_;
     static grpc::ServerWriter<argus::ArgusdMetricsHandle> *metricsWriter_;
+    std::condition_variable cv_;
+    std::mutex mux_;
 };
 } // namespace argusd
 
