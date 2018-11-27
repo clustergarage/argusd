@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(ArgusD C CXX)
+project(ArgusD VERSION 0.3.0 LANGUAGES C CXX)
 
 include(ExternalProject)
 
@@ -7,7 +7,9 @@ set(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS} -std=c++17)
 set(CMAKE_EXE_LINKER_FLAGS -static)
 set(CMAKE_BUILD_TYPE Release)
 
-find_package(Threads REQUIRED)
+find_library(RT_LIBRARY NAMES librt.a rt REQUIRED)
+find_library(PTHREAD_LIBRARY NAMES libpthread.a pthread REQUIRED)
+find_library(DL_LIBRARY NAMES libdl.a dl REQUIRED)
 
 # Builds c-ares project from the git repo
 ExternalProject_Add(c-ares
@@ -22,6 +24,7 @@ ExternalProject_Add(c-ares
     -DCARES_BUILD_TOOLS:BOOL=OFF
     -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
 )
+set(CARES_LIBRARY ${CMAKE_CURRENT_BINARY_DIR}/c-ares/lib/libcares.a)
 
 # Builds zlib project from the git repo
 ExternalProject_Add(zlib
@@ -32,6 +35,7 @@ ExternalProject_Add(zlib
   CMAKE_CACHE_ARGS
     -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
 )
+set(ZLIB_LIBRARY ${CMAKE_CURRENT_BINARY_DIR}/zlib/lib/libz.a)
 
 # Builds openssl project from the git repo
 ExternalProject_Add(openssl
@@ -52,6 +56,7 @@ ExternalProject_Get_Property(openssl BINARY_DIR)
 set(OPENSSL_FOUND TRUE)
 set(OPENSSL_ROOT_DIR ${CMAKE_CURRENT_BINARY_DIR}/openssl)
 set(OPENSSL_INCLUDE_DIR ${OPENSSL_ROOT_DIR}/include)
+set(OPENSSL_LIBRARY ${OPENSSL_ROOT_DIR}/lib/libssl.a)
 set(OPENSSL_CRYPTO_LIBRARY ${OPENSSL_ROOT_DIR}/lib/libcrypto.a)
 
 ## Builds protobuf project from the git repo
@@ -75,8 +80,7 @@ ExternalProject_Add(protobuf
     -Dprotobuf_BUILD_TESTS:BOOL=OFF
     -Dprotobuf_WITH_ZLIB:BOOL=OFF
     -Dprotobuf_MSVC_STATIC_RUNTIME:BOOL=OFF
-    -DZLIB_ROOT:STRING=${ZLIB_INSTALL}
-    -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
+    -DZLIB_ROOT:STRING=${ZLIB_INSTALL} -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
 )
 ExternalProject_Get_Property(protobuf BINARY_DIR)
 set(PROTOBUF_FOUND TRUE)
@@ -101,6 +105,8 @@ ExternalProject_Add(gflags
     -DGFLAGS_NAMESPACE:STRING=google
     -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
 )
+set(GFLAGS_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/gflags/include)
+set(GFLAGS_LIBRARY ${CMAKE_CURRENT_BINARY_DIR}/gflags/lib/libgflags.a)
 
 # Builds grpc project from the git repo
 ExternalProject_Add(grpc
@@ -124,6 +130,11 @@ ExternalProject_Add(grpc
     -DOPENSSL_ROOT_DIR:PATH=${OPENSSL_ROOT_DIR}
     -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
 )
+set(gRPC_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/grpc/include)
+set(gRPC_LIBRARY ${CMAKE_CURRENT_BINARY_DIR}/grpc/lib/libgrpc++.a
+  ${CMAKE_CURRENT_BINARY_DIR}/grpc/lib/libgrpc.a
+  ${CMAKE_CURRENT_BINARY_DIR}/grpc/lib/libgpr.a
+  ${CMAKE_CURRENT_BINARY_DIR}/grpc/lib/libaddress_sorting.a)
 
 # Builds glog project from the git repo
 ExternalProject_Add(glog
@@ -136,6 +147,8 @@ ExternalProject_Add(glog
   CMAKE_CACHE_ARGS
     -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
 )
+set(GLOG_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/glog/include)
+set(GLOG_LIBRARY ${CMAKE_CURRENT_BINARY_DIR}/glog/lib/libglog.a)
 
 # Builds fmt project from the git repo
 ExternalProject_Add(fmt
@@ -147,23 +160,8 @@ ExternalProject_Add(fmt
     -DFMT_TEST:BOOL=OFF
     -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
 )
-
-set(_CARES_LIBCARES ${CMAKE_CURRENT_BINARY_DIR}/c-ares/lib/libcares.a)
-set(_ZLIB_LIBZLIB ${CMAKE_CURRENT_BINARY_DIR}/zlib/lib/libz.a)
-set(_PROTOBUF_LIBPROTOBUF ${CMAKE_CURRENT_BINARY_DIR}/protobuf/lib/libprotobuf.a)
-set(_OPENSSL_LIBOPENSSL ${CMAKE_CURRENT_BINARY_DIR}/openssl/lib/libssl.a
-  ${CMAKE_CURRENT_BINARY_DIR}/openssl/lib/libcrypto.a)
-set(_GFLAGS_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/gflags/include)
-set(_GFLAGS_LIBGFLAGS ${CMAKE_CURRENT_BINARY_DIR}/gflags/lib/libgflags.a)
-set(_GLOG_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/glog/include)
-set(_GLOG_LIBGLOG ${CMAKE_CURRENT_BINARY_DIR}/glog/lib/libglog.a)
-set(_gRPC_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/grpc/include)
-set(_gRPC_LIBGRPCPP ${CMAKE_CURRENT_BINARY_DIR}/grpc/lib/libgrpc++.a
-  ${CMAKE_CURRENT_BINARY_DIR}/grpc/lib/libgrpc.a
-  ${CMAKE_CURRENT_BINARY_DIR}/grpc/lib/libgpr.a
-  ${CMAKE_CURRENT_BINARY_DIR}/grpc/lib/libaddress_sorting.a)
-set(_FMT_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/fmt/include)
-set(_FMT_LIBFMT ${CMAKE_CURRENT_BINARY_DIR}/fmt/lib/libfmt.a)
+set(FMT_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/fmt/include)
+set(FMT_LIBRARY ${CMAKE_CURRENT_BINARY_DIR}/fmt/lib/libfmt.a)
 
 include_directories(
   # Include generated *.pb.h files
@@ -171,16 +169,16 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/lib
   ${PROJECT_SOURCE_DIR}/argus-proto
   ${PROTOBUF_INCLUDE_DIR}
-  ${_GFLAGS_INCLUDE_DIR}
-  ${_GLOG_INCLUDE_DIR}
-  ${_gRPC_INCLUDE_DIR}
-  ${_FMT_INCLUDE_DIR}
+  ${GFLAGS_INCLUDE_DIR}
+  ${GLOG_INCLUDE_DIR}
+  ${gRPC_INCLUDE_DIR}
+  ${FMT_INCLUDE_DIR}
 )
 add_subdirectory(lib argus-proto)
 
-set(_ARGUS_PROTO_SRCS ${PROJECT_SOURCE_DIR}/argus-proto/c++/argus.pb.cc
+set(ARGUS_PROTO_SRCS ${PROJECT_SOURCE_DIR}/argus-proto/c++/argus.pb.cc
   ${PROJECT_SOURCE_DIR}/argus-proto/c++/health.pb.cc)
-set(_ARGUS_GRPC_SRCS ${PROJECT_SOURCE_DIR}/argus-proto/c++/argus.grpc.pb.cc
+set(ARGUS_GRPC_SRCS ${PROJECT_SOURCE_DIR}/argus-proto/c++/argus.grpc.pb.cc
   ${PROJECT_SOURCE_DIR}/argus-proto/c++/health.grpc.pb.cc)
 
 # Targets
@@ -190,22 +188,25 @@ add_executable(argusd
   argusd_impl.cc
   argusd_server.cc
   health_impl.cc
-  ${_ARGUS_PROTO_SRCS}
-  ${_ARGUS_GRPC_SRCS}
+  ${ARGUS_PROTO_SRCS}
+  ${ARGUS_GRPC_SRCS}
 )
 add_dependencies(argusd argusnotify grpc glog)
 target_link_libraries(argusd
   argusnotify
-  ${_FMT_LIBFMT}
-  ${_gRPC_LIBGRPCPP}
-  ${_GLOG_LIBGLOG}
-  ${_GFLAGS_LIBGFLAGS}
-  ${_OPENSSL_LIBOPENSSL}
-  ${_PROTOBUF_LIBPROTOBUF}
-  ${_ZLIB_LIBZLIB}
-  ${_CARES_LIBCARES}
+  ${FMT_LIBRARY}
+  ${gRPC_LIBRARY}
+  ${GLOG_LIBRARY}
+  ${GFLAGS_LIBRARY}
+  ${PROTOBUF_LIBRARY}
+  ${OPENSSL_LIBRARY}
+  ${OPENSSL_CRYPTO_LIBRARY}
+  ${ZLIB_LIBRARY}
+  ${CARES_LIBRARY}
   -Wl,--whole-archive ${CMAKE_THREAD_LIBS_INIT} -Wl,--no-whole-archive
-  rt pthread dl
+  ${RT_LIBRARY}
+  ${PTHREAD_LIBRARY}
+  ${DL_LIBRARY}
 )
 
 # strip unnecessary symbols
