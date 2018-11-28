@@ -1,7 +1,7 @@
 #ifndef _HEALTHIMPL_H
 #define _HEALTHIMPL_H
 
-#include "argus-proto/c++/health.grpc.pb.h"
+#include <argus-proto/c++/health.grpc.pb.h>
 
 namespace argusdhealth {
 class HealthImpl final : public grpc::health::v1::Health::Service {

@@ -30,7 +30,7 @@
 #include <vector>
 
 #include "argusd_util.h"
-#include "argus-proto/c++/argus.grpc.pb.h"
+#include <argus-proto/c++/argus.grpc.pb.h>
 
 namespace argusd {
 class ArgusdImpl final : public argus::Argusd::Service {

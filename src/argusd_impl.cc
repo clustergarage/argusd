@@ -45,8 +45,8 @@
 
 #include "argusd_util.h"
 extern "C" {
-#include "lib/argusnotify.h"
-#include "lib/argusutil.h"
+#include <lib/argusnotify.h>
+#include <lib/argusutil.h>
 }
 
 namespace argusd {
@@ -88,7 +88,9 @@ grpc::Status ArgusdImpl::CreateWatch(grpc::ServerContext *context [[maybe_unused
         // Wait for all processeventfd to be cleared. This indicates that the
         // inotify threads are finished and cleaned up.
         std::unique_lock<std::mutex> lock(mux_);
-        cv_.wait(lock, [=] { return watcher->processeventfd().empty(); });
+        cv_.wait(lock, [=] {
+            return watcher->processeventfd().empty();
+        });
     }
 
     response->set_nodename(request->nodename().c_str());

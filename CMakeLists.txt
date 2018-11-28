@@ -12,7 +12,7 @@ find_library(RT_LIBRARY NAMES librt.a rt REQUIRED)
 find_library(PTHREAD_LIBRARY NAMES libpthread.a pthread REQUIRED)
 find_library(DL_LIBRARY NAMES libdl.a dl REQUIRED)
 
-# Builds c-ares project from the git repo
+# Builds c-ares project from the git repo.
 ExternalProject_Add(c-ares
   PREFIX c-ares
   GIT_REPOSITORY https://github.com/c-ares/c-ares
@@ -27,7 +27,7 @@ ExternalProject_Add(c-ares
 )
 set(CARES_LIBRARY ${CMAKE_CURRENT_BINARY_DIR}/c-ares/lib/libcares.a)
 
-# Builds zlib project from the git repo
+# Builds zlib project from the git repo.
 ExternalProject_Add(zlib
   PREFIX zlib
   GIT_REPOSITORY https://github.com/madler/zlib
@@ -38,7 +38,7 @@ ExternalProject_Add(zlib
 )
 set(ZLIB_LIBRARY ${CMAKE_CURRENT_BINARY_DIR}/zlib/lib/libz.a)
 
-# Builds openssl project from the git repo
+# Builds openssl project from the git repo.
 ExternalProject_Add(openssl
   PREFIX openssl
   GIT_REPOSITORY https://github.com/openssl/openssl
@@ -60,7 +60,7 @@ set(OPENSSL_INCLUDE_DIR ${OPENSSL_ROOT_DIR}/include)
 set(OPENSSL_LIBRARY ${OPENSSL_ROOT_DIR}/lib/libssl.a)
 set(OPENSSL_CRYPTO_LIBRARY ${OPENSSL_ROOT_DIR}/lib/libcrypto.a)
 
-## Builds protobuf project from the git repo
+## Builds protobuf project from the git repo.
 ExternalProject_Add(protobuf
   PREFIX protobuf
   DEPENDS zlib
@@ -93,7 +93,7 @@ set(PROTOBUF_ROOT_DIR ${CMAKE_CURRENT_BINARY_DIR}/protobuf)
 set(PROTOBUF_INCLUDE_DIR ${PROTOBUF_ROOT_DIR}/include)
 set(PROTOBUF_LIBRARY ${PROTOBUF_ROOT_DIR}/lib/libprotobuf.a)
 
-# Builds gflags project from the git repo
+# Builds gflags project from the git repo.
 ExternalProject_Add(gflags
   PREFIX gflags
   GIT_REPOSITORY https://github.com/gflags/gflags
@@ -113,7 +113,7 @@ ExternalProject_Add(gflags
 set(GFLAGS_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/gflags/include)
 set(GFLAGS_LIBRARY ${CMAKE_CURRENT_BINARY_DIR}/gflags/lib/libgflags.a)
 
-# Builds grpc project from the git repo
+# Builds grpc project from the git repo.
 ExternalProject_Add(grpc
   PREFIX grpc
   DEPENDS c-ares gflags openssl protobuf zlib
@@ -143,7 +143,7 @@ set(gRPC_LIBRARY ${CMAKE_CURRENT_BINARY_DIR}/grpc/lib/libgrpc++.a
   ${CMAKE_CURRENT_BINARY_DIR}/grpc/lib/libgpr.a
   ${CMAKE_CURRENT_BINARY_DIR}/grpc/lib/libaddress_sorting.a)
 
-# Builds glog project from the git repo
+# Builds glog project from the git repo.
 ExternalProject_Add(glog
   PREFIX glog
   DEPENDS gflags
@@ -159,7 +159,7 @@ ExternalProject_Add(glog
 set(GLOG_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/glog/include)
 set(GLOG_LIBRARY ${CMAKE_CURRENT_BINARY_DIR}/glog/lib/libglog.a)
 
-# Builds fmt project from the git repo
+# Builds fmt project from the git repo.
 ExternalProject_Add(fmt
     PREFIX fmt
     GIT_REPOSITORY https://github.com/fmtlib/fmt
@@ -172,10 +172,9 @@ ExternalProject_Add(fmt
 set(FMT_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/fmt/include)
 set(FMT_LIBRARY ${CMAKE_CURRENT_BINARY_DIR}/fmt/lib/libfmt.a)
 
-include_directories(
-  # Include generated *.pb.h files
-  ${CMAKE_CURRENT_BINARY_DIR}
+include_directories(${CMAKE_CURRENT_BINARY_DIR}
   ${PROJECT_SOURCE_DIR}/lib
+  # Include generated *.pb.h files.
   ${PROJECT_SOURCE_DIR}/argus-proto
   PRIVATE ${PROTOBUF_INCLUDE_DIR}
   PRIVATE ${GFLAGS_INCLUDE_DIR}
@@ -190,17 +189,19 @@ set(ARGUS_PROTO_SRCS ${PROJECT_SOURCE_DIR}/argus-proto/c++/argus.pb.cc
 set(ARGUS_GRPC_SRCS ${PROJECT_SOURCE_DIR}/argus-proto/c++/argus.grpc.pb.cc
   ${PROJECT_SOURCE_DIR}/argus-proto/c++/health.grpc.pb.cc)
 
-# Targets
 add_executable(argusd
-  argusd_server.cc
-  argusd_impl.cc
-  argusd_auth.cc
-  argusd_util.cc
-  health_impl.cc
+  src/argusd_server.cc
+  src/argusd_impl.cc
+  src/argusd_auth.cc
+  src/argusd_util.cc
+  src/health_impl.cc
   ${ARGUS_PROTO_SRCS}
   ${ARGUS_GRPC_SRCS}
 )
 add_dependencies(argusd argusnotify grpc glog)
+target_include_directories(argusd
+  # Include headers from directories like <[lib|argus-proto]/file.h>.
+  PRIVATE ${CMAKE_SOURCE_DIR})
 target_link_libraries(argusd
   argusnotify
   ${FMT_LIBRARY}
@@ -218,6 +219,6 @@ target_link_libraries(argusd
   ${DL_LIBRARY}
 )
 
-# strip unnecessary symbols
+# Strip all symbols from built binary.
 add_custom_command(TARGET argusd POST_BUILD
   COMMAND strip -s $<TARGET_FILE:argusd>)
