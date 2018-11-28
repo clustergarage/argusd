@@ -64,3 +64,8 @@ sudo ./argusd -tls \
 
 **Warning**: When running the daemon out-of-cluster in a VM-based Kubernetes context, it will fail to locate the PID from the container ID through numerous cgroup checks and will be unable to start any watchers. The solution to get around this is to either run a non-VM-based local Kubernetes, or to run as a pod inside the cluster. The configurations in order to do the latter option are located in the [argus](https://github.com/clustergarage/argus) repo.
 
+---
+
+### Further Reading
+
+[Technical Details](docs/TECHNICAL_DETAILS.md)
