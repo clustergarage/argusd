@@ -28,6 +28,7 @@
 #include <sys/eventfd.h>
 #include <sys/inotify.h>
 #include <algorithm>
+#include <chrono>
 #include <condition_variable>
 #include <functional>
 #include <future>
@@ -88,7 +89,7 @@ grpc::Status ArgusdImpl::CreateWatch(grpc::ServerContext *context [[maybe_unused
         // Wait for all processeventfd to be cleared. This indicates that the
         // inotify threads are finished and cleaned up.
         std::unique_lock<std::mutex> lock(mux_);
-        cv_.wait(lock, [=] {
+        cv_.wait_until(lock, std::chrono::system_clock::now() + std::chrono::seconds(2), [=] {
             return watcher->processeventfd().empty();
         });
     }
@@ -355,14 +356,11 @@ void ArgusdImpl::createInotifyWatcher(const std::string nodeName, const std::str
     }
     eventProcessfds->Add(processfd);
 
-    char **subjectPaths = getPathArrayFromSubject(pid, subject);
-    char **ignorePaths = getPathArrayFromIgnore(subject);
-
     std::packaged_task<int(int, int, unsigned int, char **, unsigned int, char **, uint32_t,
         bool, bool, int, int, mqd_t)> task(start_inotify_watcher);
     std::shared_future<int> result(task.get_future());
-    std::thread taskThread(std::move(task), pid, sid, subject->path_size(), subjectPaths/*getPathArrayFromSubject(pid, subject)*/,
-        subject->ignore_size(), ignorePaths/*getPathArrayFromIgnore(subject)*/, getEventMaskFromSubject(subject),
+    std::thread taskThread(std::move(task), pid, sid, subject->path_size(), getPathArrayFromSubject(pid, subject),
+        subject->ignore_size(), getPathArrayFromIgnore(subject), getEventMaskFromSubject(subject),
         subject->onlydir(), subject->recursive(), subject->maxdepth(), processfd, mq);
     // Start as daemon process.
     taskThread.detach();
@@ -380,8 +378,6 @@ void ArgusdImpl::createInotifyWatcher(const std::string nodeName, const std::str
                 // Notify the `condition_variable` of changes.
                 cv_.notify_one();
             }
-            delete[] subjectPaths;
-            delete[] ignorePaths;
         }
     }, result);
     cleanupThread.detach();
