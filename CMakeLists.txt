@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(ArgusD VERSION 0.3.0 LANGUAGES C CXX)
+project(ArgusD VERSION 0.4.0 LANGUAGES C CXX)
 
 include(ExternalProject)
 

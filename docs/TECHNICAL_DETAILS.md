@@ -28,7 +28,7 @@ The **argus-controller** will pass the daemon a container ID, since it will not 
 
 This can be done for each container runtime, albeit each one is different.
 
-**Docker** is by far the most complex, and over time this has changed with new versions and if it was running in Kubernetes or not. First, it requires the `docker.sock`, `docker.pid`, and `/sys/fs/cgroup` to be mounted from the host into the container. We grab the cgroup root and process cgroup paths and store them to construct the following attempts:
+**Docker** is by far the most complex, and over time this has changed with new versions and if it was running in Kubernetes or not. First, it requires `/sys/fs/cgroup` to be mounted from the host into the container. We grab the cgroup root and process cgroup paths and store them to construct the following attempts:
 
 - First check under:
   `[cgroup_root]/[process_cgroup]/[container_id]/tasks`
