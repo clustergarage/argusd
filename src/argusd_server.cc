@@ -36,7 +36,6 @@
 
 #include "argusd_auth.h"
 #include "argusd_impl.h"
-#include "argusd_util.h"
 #include "health_impl.h"
 
 #define PORT 50051

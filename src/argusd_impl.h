@@ -29,8 +29,8 @@
 #include <future>
 #include <vector>
 
-#include "argusd_util.h"
 #include <argus-proto/c++/argus.grpc.pb.h>
+#include <libcontainer/container_util.h>
 
 namespace argusd {
 class ArgusdImpl final : public argus::Argusd::Service {
@@ -47,7 +47,7 @@ private:
     std::vector<int> getPidsFromRequest(std::shared_ptr<argus::ArgusdConfig> request);
     std::shared_ptr<argus::ArgusdHandle> findArgusdWatcherByPids(std::string nodeName, std::vector<int> pids);
     char **getPathArrayFromSubject(int pid, std::shared_ptr<argus::ArgusWatcherSubject> subject);
-    char **getPathArrayFromIgnore(std::shared_ptr<argus::ArgusWatcherSubject> subject);
+    char **getIgnoreArrayFromSubject(std::shared_ptr<argus::ArgusWatcherSubject> subject);
     static std::string getTagListFromSubject(std::shared_ptr<argus::ArgusWatcherSubject> subject);
     uint32_t getEventMaskFromSubject(std::shared_ptr<argus::ArgusWatcherSubject> subject);
     void createInotifyWatcher(std::string nodeName, std::string podName, std::shared_ptr<argus::ArgusWatcherSubject> subject,
@@ -69,7 +69,7 @@ private:
      * @param prefix
      */
     inline void cleanContainerId(std::string &containerId, const std::string &prefix) const {
-        ArgusdUtil::eraseSubstr(containerId, prefix + "://");
+        clustergarage::container::Util::eraseSubstr(containerId, prefix + "://");
     }
 
     std::vector<std::shared_ptr<argus::ArgusdHandle>> watchers_;

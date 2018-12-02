@@ -22,8 +22,8 @@
  * SOFTWARE.
  */
 
-#ifndef _HEALTHIMPL_H
-#define _HEALTHIMPL_H
+#ifndef __HEALTH_IMPL_H__
+#define __HEALTH_IMPL_H__
 
 #include <argus-proto/c++/health.grpc.pb.h>
 

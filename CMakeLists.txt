@@ -161,16 +161,27 @@ set(GLOG_LIBRARY ${CMAKE_CURRENT_BINARY_DIR}/glog/lib/libglog.a)
 
 # Builds fmt project from the git repo.
 ExternalProject_Add(fmt
-    PREFIX fmt
-    GIT_REPOSITORY https://github.com/fmtlib/fmt
-    GIT_TAG 5.2.1
-    CMAKE_CACHE_ARGS
+  PREFIX fmt
+  GIT_REPOSITORY https://github.com/fmtlib/fmt
+  GIT_TAG 5.2.1
+  CMAKE_CACHE_ARGS
     -DFMT_DOC:BOOL=OFF
     -DFMT_TEST:BOOL=OFF
     -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
 )
 set(FMT_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/fmt/include)
 set(FMT_LIBRARY ${CMAKE_CURRENT_BINARY_DIR}/fmt/lib/libfmt.a)
+
+# Builds libcontainer project from the git repo.
+ExternalProject_Add(libcontainer
+  PREFIX libcontainer
+  GIT_REPOSITORY https://github.com/clustergarage/libcontainer
+  GIT_TAG v0.1.0
+  CMAKE_CACHE_ARGS
+    -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
+)
+set(LIBCONTAINER_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/libcontainer/include)
+set(LIBCONTAINER_LIBRARY ${CMAKE_CURRENT_BINARY_DIR}/libcontainer/lib/libcontainer.a)
 
 include_directories(${CMAKE_CURRENT_BINARY_DIR}
   ${PROJECT_SOURCE_DIR}/lib
@@ -181,8 +192,10 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR}
   PRIVATE ${GLOG_INCLUDE_DIR}
   PRIVATE ${gRPC_INCLUDE_DIR}
   PRIVATE ${FMT_INCLUDE_DIR}
+  PRIVATE ${LIBCONTAINER_INCLUDE_DIR}
 )
-add_subdirectory(lib argus-proto)
+add_subdirectory(lib)
+add_subdirectory(argus-proto)
 
 set(ARGUS_PROTO_SRCS ${PROJECT_SOURCE_DIR}/argus-proto/c++/argus.pb.cc
   ${PROJECT_SOURCE_DIR}/argus-proto/c++/health.pb.cc)
@@ -193,17 +206,17 @@ add_executable(argusd
   src/argusd_server.cc
   src/argusd_impl.cc
   src/argusd_auth.cc
-  src/argusd_util.cc
   src/health_impl.cc
   ${ARGUS_PROTO_SRCS}
   ${ARGUS_GRPC_SRCS}
 )
-add_dependencies(argusd argusnotify grpc glog)
+add_dependencies(argusd argusnotify libcontainer grpc glog)
 target_include_directories(argusd
   # Include headers from directories like <[lib|argus-proto]/file.h>.
   PRIVATE ${CMAKE_SOURCE_DIR})
 target_link_libraries(argusd
   argusnotify
+  ${LIBCONTAINER_LIBRARY}
   ${FMT_LIBRARY}
   ${gRPC_LIBRARY}
   ${GLOG_LIBRARY}

@@ -43,8 +43,8 @@
 #include <glog/logging.h>
 #include <grpc/grpc.h>
 #include <grpc++/server_context.h>
+#include <libcontainer/container_util.h>
 
-#include "argusd_util.h"
 extern "C" {
 #include <lib/argusnotify.h>
 #include <lib/argusutil.h>
@@ -57,7 +57,7 @@ grpc::ServerWriter<argus::ArgusdMetricsHandle> *ArgusdImpl::metricsWriter_;
  * CreateWatch is responsible for creating (or updating) an argus watcher. Find
  * list of PIDs from the request's container IDs list. With the list of PIDs,
  * create `inotify` watchers by spawning an argusnotify process that handles
- * the filesystem-level instructions to do so an mqueue process is created to
+ * the filesystem-level instructions. To do so, an mqueue process is created to
  * watch on a pod-level mq file descriptor. That way if this pod is killed all
  * mqueue watchers go with it.
  *
@@ -205,9 +205,9 @@ grpc::Status ArgusdImpl::RecordMetrics(grpc::ServerContext *context [[maybe_unus
 std::vector<int> ArgusdImpl::getPidsFromRequest(std::shared_ptr<argus::ArgusdConfig> request) {
     std::vector<int> pids;
     std::for_each(request->cid().cbegin(), request->cid().cend(), [&](std::string cid) {
-        std::string runtime = ArgusdUtil::findContainerRuntime(cid);
+        std::string runtime = clustergarage::container::Util::findContainerRuntime(cid);
         cleanContainerId(cid, runtime);
-        int pid = ArgusdUtil::getPidForContainer(cid, runtime);
+        int pid = clustergarage::container::Util::getPidForContainer(cid, runtime);
         if (pid) {
             pids.push_back(pid);
         }
@@ -239,9 +239,9 @@ std::shared_ptr<argus::ArgusdHandle> ArgusdImpl::findArgusdWatcherByPids(const s
 }
 
 /**
- * Returns array of char buffer paths to do the actual watch on given a list of
- * subjects. These prepend /proc/{PID}/root on each path so we can monitor via profs
- * directly to receive inode events.
+ * Returns array of char buffer paths to do the actual watch on given a
+ * subject. These prepend /proc/{PID}/root on each path so we can monitor via
+ * profs directly to receive inode events.
  *
  * @param pid
  * @param subject
@@ -264,14 +264,14 @@ char **ArgusdImpl::getPathArrayFromSubject(const int pid, std::shared_ptr<argus:
 }
 
 /**
- * Returns array of char buffer paths to ignore given a list of subjects. When
- * doing a recursive watch, if ignore paths are provided that match a specific
- * path it will be skipped, including all its children.
+ * Returns array of char buffer paths to ignore given a subject. When doing a
+ * recursive watch, if ignore paths are provided that match a specific path it
+ * will be skipped, including all its children.
  *
  * @param subject
  * @return
  */
-char **ArgusdImpl::getPathArrayFromIgnore(std::shared_ptr<argus::ArgusWatcherSubject> subject) {
+char **ArgusdImpl::getIgnoreArrayFromSubject(std::shared_ptr<argus::ArgusWatcherSubject> subject) {
     char **patharr = new char *[subject->ignore_size()];
     size_t i = 0;
     std::for_each(subject->ignore().cbegin(), subject->ignore().cend(), [&](std::string path) {
@@ -360,7 +360,7 @@ void ArgusdImpl::createInotifyWatcher(const std::string nodeName, const std::str
         bool, bool, int, int, mqd_t)> task(start_inotify_watcher);
     std::shared_future<int> result(task.get_future());
     std::thread taskThread(std::move(task), pid, sid, subject->path_size(), getPathArrayFromSubject(pid, subject),
-        subject->ignore_size(), getPathArrayFromIgnore(subject), getEventMaskFromSubject(subject),
+        subject->ignore_size(), getIgnoreArrayFromSubject(subject), getEventMaskFromSubject(subject),
         subject->onlydir(), subject->recursive(), subject->maxdepth(), processfd, mq);
     // Start as daemon process.
     taskThread.detach();
