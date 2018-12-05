@@ -25,7 +25,6 @@
 #ifndef __ARGUSD_IMPL_H__
 #define __ARGUSD_IMPL_H__
 
-#include <mqueue.h>
 #include <future>
 #include <vector>
 
@@ -50,13 +49,9 @@ private:
     char **getIgnoreArrayFromSubject(std::shared_ptr<argus::ArgusWatcherSubject> subject);
     static std::string getTagListFromSubject(std::shared_ptr<argus::ArgusWatcherSubject> subject);
     uint32_t getEventMaskFromSubject(std::shared_ptr<argus::ArgusWatcherSubject> subject);
-    void createInotifyWatcher(std::string nodeName, std::string podName, std::shared_ptr<argus::ArgusWatcherSubject> subject,
-        int pid, int sid, google::protobuf::RepeatedField<google::protobuf::int32> *procFds, mqd_t mq);
-    mqd_t createMessageQueue(std::string logFormat, std::string name, std::string nodeName,
-        std::string podName, google::protobuf::RepeatedPtrField<argus::ArgusWatcherSubject> subjects, mqd_t mq);
-    static void startMessageQueue(std::string logFormat, std::string name, std::string nodeName,
-        std::string podName, google::protobuf::RepeatedPtrField<argus::ArgusWatcherSubject> subjects,
-        mqd_t mq, std::string mqPath);
+    void createInotifyWatcher(std::string watcherName, std::string nodeName, std::string podName,
+        std::shared_ptr<argus::ArgusWatcherSubject> subject, int pid, int sid,
+        google::protobuf::RepeatedField<google::protobuf::int32> *procFds, std::string logFormat);
     void sendKillSignalToWatcher(std::shared_ptr<argus::ArgusdHandle> watcher);
     void eraseEventProcessfd(google::protobuf::RepeatedField<google::protobuf::int32> *eventProcessfds, int processfd);
     void sendExitMessageToMessageQueue(std::shared_ptr<argus::ArgusdHandle> watcher);
@@ -72,11 +67,33 @@ private:
         clustergarage::container::Util::eraseSubstr(containerId, prefix + "://");
     }
 
+    /**
+     * Helper function to convert `str` as type `std::string` to a usable
+     * C-style `char *`.
+     *
+     * @param str
+     * @return
+     */
+    inline char *convertStringToCString(const std::string &str) const {
+        char *cstr = new char[str.size() + 1];
+        strncpy(cstr, str.c_str(), str.size() + 1);
+        return cstr;
+    }
+
     std::vector<std::shared_ptr<argus::ArgusdHandle>> watchers_;
-    static grpc::ServerWriter<argus::ArgusdMetricsHandle> *metricsWriter_;
     std::condition_variable cv_;
     std::mutex mux_;
 };
 } // namespace argusd
+
+extern grpc::ServerWriter<argus::ArgusdMetricsHandle> *kMetricsWriter;
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+void logArgusWatchEvent(struct arguswatch_event *);
+#ifdef __cplusplus
+}; // extern "C"
+#endif
 
 #endif

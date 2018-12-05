@@ -26,29 +26,29 @@
 #define __ARGUS_NOTIFY__
 
 #include <limits.h>
+#include <signal.h>
 #include <sys/inotify.h>
 
 #include "argusutil.h"
 
 #define ARGUSNOTIFY_KILL SIGKILL
-#define MQ_MAX_SIZE sizeof(struct arguswatch_event)
-#define MQ_QUEUE_NAME "/aw_mqueue"
-#define MQ_EXIT_MESSAGE "MQ_EXIT"
 
 static const size_t INOTIFY_READ_BUF_LEN = (100 * (sizeof(struct inotify_event) + NAME_MAX + 1));
 
 struct arguswatch_event {
-    int pid, sid;
+    struct arguswatch *watch;
     uint32_t event_mask;
-    char path_name[PATH_MAX], file_name[NAME_MAX];
+    const char *path_name, *file_name;
     bool is_dir;
 };
 
 static int reinitialize(struct arguswatch *watch);
-static size_t process_next_inotify_event(struct arguswatch *watch, const char *buf, size_t len, bool first);
-static int process_inotify_events(struct arguswatch *watch);
-int start_inotify_watcher(int pid, int sid, unsigned int pathc, char *paths[], unsigned int ignorec, char *ignores[],
-    uint32_t mask, bool only_dir, bool recursive, int max_depth, int processevtfd, mqd_t mq);
+static size_t process_next_inotify_event(struct arguswatch *watch, const char *buf, size_t len, bool first,
+    void (*logfn)(struct arguswatch_event *));
+static int process_inotify_events(struct arguswatch *watch, void (*logfn)(struct arguswatch_event *));
+int start_inotify_watcher(char *name, int pid, int sid, char *nodename, char *podname, unsigned int pathc, char *paths[],
+    unsigned int ignorec, char *ignores[], uint32_t mask, bool only_dir, bool recursive, int max_depth, int processevtfd,
+    char *tags, char *logformat, void (*logfn)(struct arguswatch_event *));
 void send_watcher_kill_signal(int processfd);
 
 #endif

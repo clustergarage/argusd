@@ -50,16 +50,14 @@ extern "C" {
 #include <lib/argusutil.h>
 }
 
-namespace argusd {
-grpc::ServerWriter<argus::ArgusdMetricsHandle> *ArgusdImpl::metricsWriter_;
+grpc::ServerWriter<argus::ArgusdMetricsHandle> *kMetricsWriter;
 
+namespace argusd {
 /**
  * CreateWatch is responsible for creating (or updating) an argus watcher. Find
  * list of PIDs from the request's container IDs list. With the list of PIDs,
  * create `inotify` watchers by spawning an argusnotify process that handles
- * the filesystem-level instructions. To do so, an mqueue process is created to
- * watch on a pod-level mq file descriptor. That way if this pod is killed all
- * mqueue watchers go with it.
+ * the filesystem-level instructions.
  *
  * @param context
  * @param request
@@ -81,8 +79,6 @@ grpc::Status ArgusdImpl::CreateWatch(grpc::ServerContext *context [[maybe_unused
     LOG(INFO) << (watcher == nullptr ? "Starting" : "Updating") << " `inotify` watcher ("
         << request->podname() << ":" << request->nodename() << ")";
     if (watcher != nullptr) {
-        // Stop existing message queue.
-        sendExitMessageToMessageQueue(watcher);
         // Stop existing watcher polling.
         sendKillSignalToWatcher(watcher);
 
@@ -96,16 +92,14 @@ grpc::Status ArgusdImpl::CreateWatch(grpc::ServerContext *context [[maybe_unused
 
     response->set_nodename(request->nodename().c_str());
     response->set_podname(request->podname().c_str());
-    response->set_mqfd(static_cast<google::protobuf::int32>(createMessageQueue(request->logformat(),
-        request->name(), request->nodename(), request->podname(), request->subject(),
-        (watcher != nullptr ? response->mqfd() : EOF))));
 
     for_each(pids.cbegin(), pids.cend(), [&](const int pid) {
         int i = 0;
         for_each(request->subject().cbegin(), request->subject().cend(), [&](const argus::ArgusWatcherSubject subject) {
             // @TODO: Check if any watchers are started, if not, don't add to response.
-            createInotifyWatcher(response->nodename(), response->podname(), std::make_shared<argus::ArgusWatcherSubject>(subject),
-                pid, i, response->mutable_processeventfd(), response->mqfd());
+            createInotifyWatcher(request->name(), response->nodename(), response->podname(),
+                std::make_shared<argus::ArgusWatcherSubject>(subject), pid, i,
+                response->mutable_processeventfd(), request->logformat());
             ++i;
         });
         response->add_pid(pid);
@@ -124,9 +118,8 @@ grpc::Status ArgusdImpl::CreateWatch(grpc::ServerContext *context [[maybe_unused
 }
 
 /**
- * DestroyWatch is responsible for deleting an argus watcher. Send exit message
- * to the mqueue to stop watching for events to log. Send kill signal to the
- * argusnotify poller to stop that child process.
+ * DestroyWatch is responsible for deleting an argus watcher. Send kill signal
+ * to the argusnotify poller to stop that child process.
  *
  * @param context
  * @param request
@@ -140,8 +133,6 @@ grpc::Status ArgusdImpl::DestroyWatch(grpc::ServerContext *context [[maybe_unuse
 
     auto watcher = findArgusdWatcherByPids(request->nodename(), std::vector<int>(request->pid().cbegin(), request->pid().cend()));
     if (watcher != nullptr) {
-        // Stop existing message queue.
-        sendExitMessageToMessageQueue(watcher);
         // Stop existing watcher polling.
         sendKillSignalToWatcher(watcher);
     }
@@ -183,14 +174,15 @@ grpc::Status ArgusdImpl::GetWatchState(grpc::ServerContext *context [[maybe_unus
 grpc::Status ArgusdImpl::RecordMetrics(grpc::ServerContext *context [[maybe_unused]], const argus::Empty *request [[maybe_unused]],
     grpc::ServerWriter<argus::ArgusdMetricsHandle> *writer) {
 
-    metricsWriter_ = writer;
+    kMetricsWriter = writer;
 
     std::condition_variable cv;
     std::mutex mux;
     std::unique_lock<std::mutex> lock(mux);
-    // Keep alive so the mq streams in new events as it gets them.
+    // Keep alive so new events coming from argusnotify can be written to the
+    // bidirectional gRPC stream.
     cv.wait(lock, [=] {
-        return metricsWriter_ == nullptr;
+        return kMetricsWriter == nullptr;
     });
 
     return grpc::Status::OK;
@@ -337,17 +329,18 @@ uint32_t ArgusdImpl::getEventMaskFromSubject(std::shared_ptr<argus::ArgusWatcher
  * created to specify removing the anonymous pipe in the case of an error
  * returned by the argusnotify poller.
  *
+ * @param watcherName
  * @param nodeName
  * @param podName
  * @param subject
  * @param pid
  * @param sid
  * @param eventProcessfds
- * @param mq
+ * @param logFormat
  */
-void ArgusdImpl::createInotifyWatcher(const std::string nodeName, const std::string podName,
+void ArgusdImpl::createInotifyWatcher(const std::string watcherName, const std::string nodeName, const std::string podName,
     std::shared_ptr<argus::ArgusWatcherSubject> subject, const int pid, const int sid,
-    google::protobuf::RepeatedField<google::protobuf::int32> *eventProcessfds, const mqd_t mq) {
+    google::protobuf::RepeatedField<google::protobuf::int32> *eventProcessfds, const std::string logFormat) {
 
     // Create anonymous pipe to communicate with `inotify` watcher.
     const int processfd = eventfd(0, EFD_CLOEXEC);
@@ -356,12 +349,23 @@ void ArgusdImpl::createInotifyWatcher(const std::string nodeName, const std::str
     }
     eventProcessfds->Add(processfd);
 
-    std::packaged_task<int(int, int, unsigned int, char **, unsigned int, char **, uint32_t,
-        bool, bool, int, int, mqd_t)> task(start_inotify_watcher);
+    std::packaged_task<int(char *, int, int, char *, char *, unsigned int, char **, unsigned int, char **, uint32_t,
+        bool, bool, int, int, char *, char *, void(struct arguswatch_event *))> task(start_inotify_watcher);
     std::shared_future<int> result(task.get_future());
-    std::thread taskThread(std::move(task), pid, sid, subject->path_size(), getPathArrayFromSubject(pid, subject),
-        subject->ignore_size(), getIgnoreArrayFromSubject(subject), getEventMaskFromSubject(subject),
-        subject->onlydir(), subject->recursive(), subject->maxdepth(), processfd, mq);
+    std::thread taskThread(std::move(task),
+        convertStringToCString(watcherName),
+        pid, sid,
+        convertStringToCString(nodeName),
+        convertStringToCString(podName),
+        subject->path_size(), getPathArrayFromSubject(pid, subject),
+        subject->ignore_size(), getIgnoreArrayFromSubject(subject),
+        getEventMaskFromSubject(subject),
+        subject->onlydir(),
+        subject->recursive(), subject->maxdepth(),
+        processfd,
+        convertStringToCString(getTagListFromSubject(subject)),
+        convertStringToCString(logFormat),
+        logArgusWatchEvent);
     // Start as daemon process.
     taskThread.detach();
 
@@ -381,156 +385,6 @@ void ArgusdImpl::createInotifyWatcher(const std::string nodeName, const std::str
         }
     }, result);
     cleanupThread.detach();
-}
-
-/**
- * Create child process as a background thread to listen on an mqueue file
- * descriptor that the argusnotify process will add events that need to be logged
- * out here.
- *
- * @param logFormat
- * @param name
- * @param nodeName
- * @param podName
- * @param subjects
- * @param mq
- * @return
- */
-mqd_t ArgusdImpl::createMessageQueue(const std::string logFormat, const std::string name, const std::string nodeName,
-    const std::string podName, const google::protobuf::RepeatedPtrField<argus::ArgusWatcherSubject> subjects, mqd_t mq) {
-
-    std::stringstream ss;
-    ss << MQ_QUEUE_NAME << "-" << podName;
-    std::string mqPath = ss.str();
-
-    if (mq != EOF) {
-        mq_close(mq);
-        mq_unlink(mqPath.c_str());
-    }
-
-    // Initialize the queue attributes.
-    mq_attr attr = {
-        .mq_flags = 0,
-        .mq_maxmsg = 10,
-        .mq_msgsize = MQ_MAX_SIZE,
-        .mq_curmsgs = 0
-    };
-
-    // Create the message queue.
-    mq = mq_open(mqPath.c_str(), O_CREAT | O_CLOEXEC | O_RDWR, S_IRUSR | S_IWUSR, &attr);
-    if (mq == EOF) {
-#if DEBUG
-        perror("mq_open");
-#endif
-        return EOF;
-    }
-
-    // Start message queue.
-    std::packaged_task<void(const std::string, const std::string, const std::string, const std::string,
-        const google::protobuf::RepeatedPtrField<argus::ArgusWatcherSubject>,
-        const mqd_t, const std::string)> queue(startMessageQueue);
-    std::thread queueThread(move(queue), logFormat, name, nodeName, podName, subjects, mq, mqPath);
-    // Start as daemon process.
-    queueThread.detach();
-
-    return mq;
-}
-
-/**
- * Starts a blocking function that will be spawned as a background thread in
- * the above function. Any message that comes through on the mqueue will be
- * handled here and any custom logging format can be applied to be processed
- * here.
- *
- * @param logFormat
- * @param name
- * @param nodeName
- * @param podName
- * @param subjects
- * @param mq
- * @param mqPath
- */
-void ArgusdImpl::startMessageQueue(const std::string logFormat, const std::string name, const std::string nodeName,
-    const std::string podName, const google::protobuf::RepeatedPtrField<argus::ArgusWatcherSubject> subjects,
-    const mqd_t mq, const std::string mqPath) {
-
-    /**
-     * Default logging format.
-     *
-     * @specifier pod      Name of the pod.
-     * @specifier node     Name of the node.
-     * @specifier event    `inotify` event that was observed.
-     * @specifier path     Name of the directory path.
-     * @specifier file     Name of the file.
-     * @specifier ftype    Evaluates to "file" or "directory".
-     * @specifier tags     List of custom tags in key=value comma-separated list.
-     * @specifier sep      Placeholder for a "/" character (e.g. between path/file).
-     */
-    std::string DEFAULT_FORMAT = "{event} {ftype} '{path}{sep}{file}' ({pod}:{node}) {tags}";
-
-    bool done = false;
-    do {
-        char buffer[MQ_MAX_SIZE + 1];
-        ssize_t bytesRead = mq_receive(mq, buffer, MQ_MAX_SIZE, nullptr);
-        buffer[bytesRead] = '\0';
-        if (bytesRead == EOF) {
-            continue;
-        }
-
-        if (!strncmp(buffer, MQ_EXIT_MESSAGE, strlen(MQ_EXIT_MESSAGE))) {
-            done = true;
-        } else {
-            auto awevent = reinterpret_cast<struct arguswatch_event *>(buffer);
-            std::regex procRegex("/proc/[0-9]+/root");
-
-            std::string maskStr;
-            if (awevent->event_mask & IN_ACCESS)             maskStr = "ACCESS";
-            else if (awevent->event_mask & IN_ATTRIB)        maskStr = "ATTRIB";
-            else if (awevent->event_mask & IN_CLOSE_WRITE)   maskStr = "CLOSE_WRITE";
-            else if (awevent->event_mask & IN_CLOSE_NOWRITE) maskStr = "CLOSE_NOWRITE";
-            else if (awevent->event_mask & IN_CREATE)        maskStr = "CREATE";
-            else if (awevent->event_mask & IN_DELETE)        maskStr = "DELETE";
-            else if (awevent->event_mask & IN_DELETE_SELF)   maskStr = "DELETE_SELF";
-            else if (awevent->event_mask & IN_MODIFY)        maskStr = "MODIFY";
-            else if (awevent->event_mask & IN_MOVE_SELF)     maskStr = "MOVE_SELF";
-            else if (awevent->event_mask & IN_MOVED_FROM)    maskStr = "MOVED_FROM";
-            else if (awevent->event_mask & IN_MOVED_TO)      maskStr = "MOVED_TO";
-            else if (awevent->event_mask & IN_OPEN)          maskStr = "OPEN";
-
-            const auto subject = std::make_shared<argus::ArgusWatcherSubject>(subjects.Get(awevent->sid));
-
-            fmt::memory_buffer out;
-            try {
-                fmt::format_to(out, !logFormat.empty() ? logFormat : DEFAULT_FORMAT,
-                    fmt::arg("event", maskStr),
-                    fmt::arg("ftype", awevent->is_dir ? "directory" : "file"),
-                    fmt::arg("path", std::regex_replace(awevent->path_name, procRegex, "")),
-                    fmt::arg("file", awevent->file_name),
-                    fmt::arg("sep", *awevent->file_name ? "/" : ""),
-                    fmt::arg("pod", podName),
-                    fmt::arg("node", nodeName),
-                    fmt::arg("tags", subject != nullptr ? getTagListFromSubject(subject) : ""));
-                LOG(INFO) << fmt::to_string(out);
-            } catch(const std::exception &e) {
-                LOG(WARNING) << "Malformed ArgusWatcher `.spec.logFormat`: \"" << e.what() << "\"";
-            }
-
-            if (metricsWriter_ != nullptr) {
-                auto metric = std::make_shared<argus::ArgusdMetricsHandle>();
-                metric->set_arguswatcher(name);
-                std::transform(maskStr.begin(), maskStr.end(), maskStr.begin(), ::tolower);
-                metric->set_event(maskStr);
-                metric->set_nodename(nodeName);
-                // Record event to metrics writer to be put into Prometheus.
-                if (!metricsWriter_->Write(*metric)) {
-                    // Broken stream.
-                }
-            }
-        }
-    } while (!done);
-
-    mq_close(mq);
-    mq_unlink(mqPath.c_str());
 }
 
 /**
@@ -563,19 +417,70 @@ void ArgusdImpl::eraseEventProcessfd(google::protobuf::RepeatedField<google::pro
        }
     }
 }
+} // namespace argusd
 
-/**
- * Sends a message to the mqueue file descriptor to stop the listener.
- *
- * @param watcher
- */
-void ArgusdImpl::sendExitMessageToMessageQueue(std::shared_ptr<argus::ArgusdHandle> watcher) {
-    // In order to stop the blocking mqueue process, send a specific exit
-    // message that will break it out of the loop.
-    if (mq_send(watcher->mqfd(), MQ_EXIT_MESSAGE, strlen(MQ_EXIT_MESSAGE), 1) == EOF) {
-#if DEBUG
-        perror("mq_send");
+#ifdef __cplusplus
+extern "C" {
 #endif
+void logArgusWatchEvent(struct arguswatch_event *awevent) {
+    /**
+     * Default logging format.
+     *
+     * @specifier pod      Name of the pod.
+     * @specifier node     Name of the node.
+     * @specifier event    `inotify` event that was observed.
+     * @specifier path     Name of the directory path.
+     * @specifier file     Name of the file.
+     * @specifier ftype    Evaluates to "file" or "directory".
+     * @specifier tags     List of custom tags in key=value comma-separated list.
+     * @specifier sep      Placeholder for a "/" character (e.g. between path/file).
+     */
+    const std::string kDefaultFormat = "{event} {ftype} '{path}{sep}{file}' ({pod}:{node}) {tags}";
+
+    std::regex procRegex("/proc/[0-9]+/root");
+
+    std::string maskStr;
+    if (awevent->event_mask & IN_ACCESS)             maskStr = "ACCESS";
+    else if (awevent->event_mask & IN_ATTRIB)        maskStr = "ATTRIB";
+    else if (awevent->event_mask & IN_CLOSE_WRITE)   maskStr = "CLOSE_WRITE";
+    else if (awevent->event_mask & IN_CLOSE_NOWRITE) maskStr = "CLOSE_NOWRITE";
+    else if (awevent->event_mask & IN_CREATE)        maskStr = "CREATE";
+    else if (awevent->event_mask & IN_DELETE)        maskStr = "DELETE";
+    else if (awevent->event_mask & IN_DELETE_SELF)   maskStr = "DELETE_SELF";
+    else if (awevent->event_mask & IN_MODIFY)        maskStr = "MODIFY";
+    else if (awevent->event_mask & IN_MOVE_SELF)     maskStr = "MOVE_SELF";
+    else if (awevent->event_mask & IN_MOVED_FROM)    maskStr = "MOVED_FROM";
+    else if (awevent->event_mask & IN_MOVED_TO)      maskStr = "MOVED_TO";
+    else if (awevent->event_mask & IN_OPEN)          maskStr = "OPEN";
+
+    fmt::memory_buffer out;
+    try {
+        fmt::format_to(out, *awevent->watch->log_format ? std::string(awevent->watch->log_format) : kDefaultFormat,
+            fmt::arg("event", maskStr),
+            fmt::arg("ftype", awevent->is_dir ? "directory" : "file"),
+            fmt::arg("path", std::regex_replace(awevent->path_name, procRegex, "")),
+            fmt::arg("file", awevent->file_name),
+            fmt::arg("sep", *awevent->file_name ? "/" : ""),
+            fmt::arg("pod", awevent->watch->pod_name),
+            fmt::arg("node", awevent->watch->node_name),
+            fmt::arg("tags", *awevent->watch->tags ? awevent->watch->tags : ""));
+        LOG(INFO) << fmt::to_string(out);
+    } catch(const std::exception &e) {
+        LOG(WARNING) << "Malformed ArgusWatcher `.spec.logFormat`: \"" << e.what() << "\"";
+    }
+
+    if (kMetricsWriter != nullptr) {
+        auto metric = std::make_shared<argus::ArgusdMetricsHandle>();
+        metric->set_arguswatcher(awevent->watch->name);
+        std::transform(maskStr.begin(), maskStr.end(), maskStr.begin(), ::tolower);
+        metric->set_event(maskStr);
+        metric->set_nodename(awevent->watch->node_name);
+        // Record event to metrics writer to be put into Prometheus.
+        if (!kMetricsWriter->Write(*metric)) {
+            // Broken stream.
+        }
     }
 }
-} // namespace argusd
+#ifdef __cplusplus
+}; // extern "C"
+#endif

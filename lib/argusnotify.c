@@ -26,7 +26,6 @@
 #include <errno.h>
 #include <ftw.h>
 #include <limits.h>
-#include <mqueue.h>
 #include <poll.h>
 #include <signal.h>
 #include <stdbool.h>
@@ -64,7 +63,7 @@ static int reinitialize(struct arguswatch *watch) {
 #endif
     }
 
-    fd = inotify_init1(IN_NONBLOCK | IN_CLOEXEC | O_NONBLOCK);
+    fd = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
     if (fd == EOF) {
 #if DEBUG
         perror("inotify_init1");
@@ -123,9 +122,12 @@ static int reinitialize(struct arguswatch *watch) {
  * @param ptr
  * @param len
  * @param first
+ * @param logfn
  * @return
  */
-static size_t process_next_inotify_event(struct arguswatch *watch, const char *ptr, size_t len, bool first) {
+static size_t process_next_inotify_event(struct arguswatch *watch, const char *ptr, size_t len, bool first,
+    void (*logfn)(struct arguswatch_event *)) {
+
     const struct inotify_event *event = (const struct inotify_event *)ptr;
     char *path = NULL;
     char fullpath[PATH_MAX + NAME_MAX];
@@ -399,17 +401,12 @@ static size_t process_next_inotify_event(struct arguswatch *watch, const char *p
     }
 
     struct arguswatch_event awevent = {
-        .pid = watch->pid,
-        .sid = watch->sid,
+        .watch = watch,
         .event_mask = event->mask,
+        .path_name = path,                          // Name of the watched directory.
+        .file_name = event->len ? event->name : "", // Name of the file.
         .is_dir = (bool)(event->mask & IN_ISDIR)
     };
-    // Name of the watched directory.
-    strncpy(awevent.path_name, path, strlen(path));
-    // Name of the file.
-    if (event->len) {
-        strncpy(awevent.file_name, event->name, strlen(event->name));
-    }
 
 #if DEBUG
     printf("send event: path = %s; file: %s; event mask = %d; dir: %d\n", awevent.path_name,
@@ -417,12 +414,8 @@ static size_t process_next_inotify_event(struct arguswatch *watch, const char *p
     fflush(stdout);
 #endif
 
-    // Send new event to the calling process via mqueue.
-    if (mq_send(watch->mq, (const char *)&awevent, sizeof(awevent), 0) == EOF) {
-#if DEBUG
-        perror("mq_send");
-#endif
-    }
+    // Call ArgusdImpl log function passed into this watch.
+    logfn(&awevent);
 
     check_cache_consistency(watch);
 
@@ -433,9 +426,10 @@ static size_t process_next_inotify_event(struct arguswatch *watch, const char *p
  * Read all available `inotify` events from the file descriptor `fd`.
  *
  * @param watch
+ * @param logfn
  * @return
  */
-static int process_inotify_events(struct arguswatch *watch) {
+static int process_inotify_events(struct arguswatch *watch, void (*logfn)(struct arguswatch_event *)) {
     // Some systems cannot read integer variables if they are not properly
     // aligned on other systems, incorrect alignment may decrease performance
     // hence, the buffer used for reading from the `inotify` file descriptor
@@ -479,7 +473,7 @@ static int process_inotify_events(struct arguswatch *watch) {
     // Process each event in the buffer returned by `read` loop over all events
     // in the buffer.
     for (ptr = buf; ptr < buf + len; /*ptr += sizeof(struct inotify_event) + event->len*/) {
-        evtlen = process_next_inotify_event(watch, ptr, buf + len - ptr, first);
+        evtlen = process_next_inotify_event(watch, ptr, buf + len - ptr, first, logfn);
 
         if (evtlen > 0) {
             ptr += evtlen;
@@ -561,6 +555,7 @@ static int process_inotify_events(struct arguswatch *watch) {
  * recursive or not, and loops infinitely waiting for new `inotify` events
  * until it receives a kill signal.
  *
+ * @param name
  * @param pid
  * @param sid
  * @param pathc
@@ -572,11 +567,12 @@ static int process_inotify_events(struct arguswatch *watch) {
  * @param recursive
  * @param max_depth
  * @param processevtfd
- * @param mq
+ * @param logfn
  * @return
  */
-int start_inotify_watcher(const int pid, const int sid, unsigned int pathc, char *paths[], unsigned int ignorec, char *ignores[],
-    uint32_t mask, bool only_dir, bool recursive, int max_depth, int processevtfd, mqd_t mq) {
+int start_inotify_watcher(char *name, const int pid, const int sid, char *nodename, char *podname, unsigned int pathc, char *paths[],
+    unsigned int ignorec, char *ignores[], uint32_t mask, bool only_dir, bool recursive, int max_depth, int processevtfd,
+    char *tags, char *logformat, void (*logfn)(struct arguswatch_event *)) {
 
     int fd, pollc;
     nfds_t nfds;
@@ -595,8 +591,11 @@ int start_inotify_watcher(const int pid, const int sid, unsigned int pathc, char
     } else {
         // Create new arguswatch placeholder struct, to be filled later.
         watch = (struct arguswatch){
+            .name = name,
             .pid = pid,
             .sid = sid,
+            .node_name = nodename,
+            .pod_name = podname,
             .slot = -1,
             .fd = EOF,
             .rootpathc = pathc,
@@ -609,7 +608,8 @@ int start_inotify_watcher(const int pid, const int sid, unsigned int pathc, char
             .recursive = recursive,
             .max_depth = max_depth,
             .processevtfd = processevtfd,
-            .mq = mq
+            .tags = tags,
+            .log_format = logformat
         };
     }
 
@@ -652,7 +652,7 @@ int start_inotify_watcher(const int pid, const int sid, unsigned int pathc, char
         if (pollc > 0) {
             if (fds[0].revents & POLLIN) {
                 // `inotify` events are available.
-                if (process_inotify_events(&watch) == EOF) {
+                if (process_inotify_events(&watch, logfn) == EOF) {
                     //goto exit;
                 }
             }

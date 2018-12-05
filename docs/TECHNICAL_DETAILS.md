@@ -6,11 +6,11 @@ procfs has a per-process root filesystem located at `/proc/[pid]/root`. We lever
 
 For example if watching `/path/to/file` is desired, we will set up the `inotify` watch on `/proc/[pid]/root/path/to/file`. Once events are received we strip off the `/proc/[pid]/root` prefix so it appears as if it was simply that original path.
 
-## Spawning `inotify` and `mqueue` Child Processes
+## Spawning `inotify` Child Processes
 
 An anonymous `eventfd` pipe is created and passed into the **argusnotify** process. The notify process uses this to listen on the `ppoll` loop for any events sent to this anonymous pipe; the only event we send here is an exit event so we can kill the notify process from the parent process.
 
-An `mqueue` is also started and passed into the **argusnotify** process. It is used when receiving events from these children processes to log that event in the parent process. The main log message is written to a file (`glog` logging framework) and a bidirectional gRPC stream so the **argus-controller** can record it in Prometheus. This is all done in a separate child thread that is spawned at the same time the `inotify` watcher is created.
+An `extern "C"` log function is passed into the **argusnotify** process along with the list of relevant watcher params. It is used when receiving events from these children processes to log that event in the parent process. The main log message is written to a file (`glog` logging framework) and a bidirectional gRPC stream so the **argus-controller** can record it in Prometheus. This is all done in a separate child thread that is spawned at the same time the `inotify` watcher is created.
 
 These file descriptors are used when spawning the **argusnotify** process as a separate child thread. A `condition_variable` is kept for purpose of killing and recreating the process when updating an existing watcher, as well as cleaning up after itself if it were to critically fail. This child process is sent an exit message from the parent by way of the anonymous `eventfd` pipe in case we want to kill the child process from the parent.
 
