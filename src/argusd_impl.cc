@@ -282,7 +282,7 @@ char **ArgusdImpl::getIgnoreArrayFromSubject(std::shared_ptr<argus::ArgusWatcher
  */
 std::string ArgusdImpl::getTagListFromSubject(std::shared_ptr<argus::ArgusWatcherSubject> subject) {
     std::string tags;
-    for (auto tag : subject->tags()) {
+    for (const auto &tag : subject->tags()) {
         if (!tags.empty()) {
             tags += ",";
         }

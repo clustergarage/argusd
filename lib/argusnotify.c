@@ -558,20 +558,24 @@ static int process_inotify_events(struct arguswatch *watch, void (*logfn)(struct
  * @param name
  * @param pid
  * @param sid
+ * @param nodename
+ * @param podname
  * @param pathc
  * @param paths
  * @param ignorec
  * @param ignores
  * @param mask
- * @param only_dir
+ * @param onlydir
  * @param recursive
- * @param max_depth
+ * @param maxdepth
  * @param processevtfd
+ * @param tags
+ * @param logformat
  * @param logfn
  * @return
  */
 int start_inotify_watcher(char *name, const int pid, const int sid, char *nodename, char *podname, unsigned int pathc, char *paths[],
-    unsigned int ignorec, char *ignores[], uint32_t mask, bool only_dir, bool recursive, int max_depth, int processevtfd,
+    unsigned int ignorec, char *ignores[], uint32_t mask, bool onlydir, bool recursive, int maxdepth, int processevtfd,
     char *tags, char *logformat, void (*logfn)(struct arguswatch_event *)) {
 
     int fd, pollc;
@@ -604,9 +608,9 @@ int start_inotify_watcher(char *name, const int pid, const int sid, char *nodena
             .ignorec = ignorec,
             .ignores = ignores,
             .event_mask = mask,
-            .only_dir = only_dir,
+            .only_dir = onlydir,
             .recursive = recursive,
-            .max_depth = max_depth,
+            .max_depth = maxdepth,
             .processevtfd = processevtfd,
             .tags = tags,
             .log_format = logformat
