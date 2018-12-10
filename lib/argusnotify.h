@@ -35,8 +35,6 @@
 #define ARGUSNOTIFY_KILL SIGKILL
 #endif
 
-static const size_t INOTIFY_READ_BUF_LEN = (100 * (sizeof(struct inotify_event) + NAME_MAX + 1));
-
 struct arguswatch_event {
     struct arguswatch *watch;
     uint32_t event_mask;
@@ -45,9 +43,9 @@ struct arguswatch_event {
 };
 
 static int reinitialize(struct arguswatch *watch);
-static size_t process_next_inotify_event(struct arguswatch *watch, const char *buf, size_t len, bool first,
-    void (*logfn)(struct arguswatch_event *));
-static int process_inotify_events(struct arguswatch *watch, void (*logfn)(struct arguswatch_event *));
+static size_t process_next_inotify_event(struct arguswatch *watch, const struct inotify_event *event, ssize_t len,
+    bool first, void (*logfn)(struct arguswatch_event *));
+static void process_inotify_events(struct arguswatch *watch, void (*logfn)(struct arguswatch_event *));
 int start_inotify_watcher(char *name, int pid, int sid, char *nodename, char *podname, unsigned int pathc, char *paths[],
     unsigned int ignorec, char *ignores[], uint32_t mask, bool onlydir, bool recursive, int maxdepth, int processevtfd,
     char *tags, char *logformat, void (*logfn)(struct arguswatch_event *));

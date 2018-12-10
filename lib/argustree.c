@@ -371,12 +371,12 @@ void watch_subtree(struct arguswatch *watch) {
 void rewrite_cached_paths(const struct arguswatch *watch, const char *oldpathpf, const char *oldname,
     const char *newpathpf, const char *newname) {
 
-    char fullpath[PATH_MAX], newpf[PATH_MAX], newpath[PATH_MAX];
+    char fullpath[PATH_MAX], newpf[PATH_MAX], newpath[PATH_MAX + 1];
     size_t len;
     int i, j;
 
-    FULL_PATH(fullpath, oldpathpf, oldname);
-    FULL_PATH(newpf, newpathpf, newname);
+    FORMAT_PATH(fullpath, oldpathpf, oldname);
+    FORMAT_PATH(newpf, newpathpf, newname);
     len = strlen(fullpath);
 
 #if DEBUG
@@ -393,8 +393,7 @@ void rewrite_cached_paths(const struct arguswatch *watch, const char *oldpathpf,
             if (strncmp(fullpath, wlcache[i].paths[j], len) == 0 &&
                 (wlcache[i].paths[j][len] == '/' ||
                 wlcache[i].paths[j][len] == '\0')) {
-                FULL_PATH(newpath, newpf, &wlcache[i].paths[j][len]);
-                //snprintf(newpath, sizeof(newpath), "%s%s", newpf, &wlcache[i].paths[j][len]);
+                FORMAT_PATH(newpath, newpf, &wlcache[i].paths[j][len]);
                 wlcache[i].paths[j] = strdup(newpath);
 #if DEBUG
                 printf("    wd %d [cache slot %d] ==> %s\n", wlcache[i].wd[j], i, newpath);

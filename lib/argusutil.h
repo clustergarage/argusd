@@ -34,9 +34,13 @@
 #define DEBUG 0
 #endif
 
-#define FULL_PATH(fullpath, directory, file) \
-do { \
-    snprintf(fullpath, sizeof(fullpath), "%s/%s", directory, file); \
+#define IN_EVENT_LEN (sizeof(struct inotify_event))
+#define IN_BUFFER_SIZE (IN_EVENT_LEN + NAME_MAX + 1)
+#define IN_EVENT_NEXT(evt, len, evtlen) ((struct inotify_event *)(((char *)(evt)) + (evtlen)))
+#define IN_EVENT_OK(evt, buf, len) ((char *)(evt) < (char *)(buf) + (len))
+
+#define FORMAT_PATH(fp, dir, file) do {           \
+    snprintf(fp, sizeof(fp), "%s/%s", dir, file); \
 } while(0)
 
 struct arguswatch {

@@ -113,29 +113,27 @@ static int reinitialize(struct arguswatch *watch) {
 }
 
 /**
- * Process the next `inotify` event in the buffer specified by `ptr` and `len`.
- * In most cases, a single event is consumed, but if there is an
+ * Process the next `inotify` event in the buffer specified by `event` and
+ * `len`. In most cases, a single event is consumed, but if there is an
  * IN_MOVED_FROM+IN_MOVED_TO pair that share a cookie value, both events are
- * consumed returns the number of bytes in the event(s) consumed from `ptr`.
+ * consumed returns the number of bytes in the event(s) consumed from `event`.
  *
  * @param watch
- * @param ptr
+ * @param event
  * @param len
  * @param first
  * @param logfn
  * @return
  */
-static size_t process_next_inotify_event(struct arguswatch *watch, const char *ptr, size_t len, bool first,
-    void (*logfn)(struct arguswatch_event *)) {
+static size_t process_next_inotify_event(struct arguswatch *watch, const struct inotify_event *event, ssize_t len,
+    bool first, void (*logfn)(struct arguswatch_event *)) {
 
-    const struct inotify_event *event = (const struct inotify_event *)ptr;
-    char *path = NULL;
-    char fullpath[PATH_MAX + NAME_MAX];
     size_t evtlen;
+    char path[PATH_MAX], fullpath[PATH_MAX + NAME_MAX + 1];
     int slot = -1, wdslot;
 
     if (event->wd != EOF) {
-        path = wd_to_path_name(watch, event->wd);
+        snprintf(path, sizeof(path), "%s", wd_to_path_name(watch, event->wd));
 
         if (!(event->mask & IN_IGNORED)) {
             // IN_Q_OVERFLOW has (event->wd == -1). Skip IN_IGNORED, since it
@@ -149,7 +147,7 @@ static size_t process_next_inotify_event(struct arguswatch *watch, const char *p
                 // Cache reached an inconsistent state.
                 reinitialize(watch);
                 // Discard all remaining events in current `read` buffer.
-                return INOTIFY_READ_BUF_LEN;
+                return IN_BUFFER_SIZE;
             }
         }
     }
@@ -160,7 +158,7 @@ static size_t process_next_inotify_event(struct arguswatch *watch, const char *p
         (event->mask & (IN_CREATE | IN_MOVED_TO))) {
         // A new subdirectory was created, or a subdirectory was renamed into
         // the tree; create watches for it, and all of its subdirectories.
-        FULL_PATH(fullpath, path, event->name);
+        FORMAT_PATH(fullpath, path, event->name);
 
 #if DEBUG
         printf("directory creation on wd %d: %s\n", event->wd, fullpath);
@@ -294,11 +292,12 @@ static size_t process_next_inotify_event(struct arguswatch *watch, const char *p
          * compromise that catches the vast majority of intra-tree renames and
          * triggers relatively few cache rebuilds.
          */
-        const struct inotify_event *nextevent = (const struct inotify_event *)(ptr + evtlen);
+        const struct inotify_event *nextevent = (const struct inotify_event *)(event + evtlen);
 
-        if (((char *)nextevent < ptr + len) &&
+        if ((nextevent < event + len) &&
             (nextevent->mask & IN_MOVED_TO) &&
             (nextevent->cookie == event->cookie)) {
+
             // We have a `rename` event. We need to fix up the cached pathnames
             // for the corresponding directory and all of its subdirectories.
             int nextslot = find_watch_checked(watch, nextevent->wd);
@@ -308,7 +307,7 @@ static size_t process_next_inotify_event(struct arguswatch *watch, const char *p
                 // Cache reached an inconsistent state.
                 reinitialize(watch);
                 // Discard all remaining events in current `read` buffer.
-                return INOTIFY_READ_BUF_LEN;
+                return IN_BUFFER_SIZE;
             }
 
             rewrite_cached_paths(watch, path, event->name,
@@ -316,17 +315,17 @@ static size_t process_next_inotify_event(struct arguswatch *watch, const char *p
 
             // Also processed the next (IN_MOVED_TO) event, so skip over it.
             evtlen += sizeof(struct inotify_event) + nextevent->len;
-        } else if (((char *)nextevent < ptr + len) || !first) {
+        } else if ((nextevent < event + len) || !first) {
             // Got a "moved from" event without an accompanying "moved to"
             // event. The directory has been moved outside the tree we are
             // monitoring need to remove the watches and remove the cache
             // entries for the moved directory and all of its subdirectories.
 #if DEBUG
             printf("moved out: %p %p\n", path, event->name);
-            printf("first = %d; remaining bytes = %ld\n", first, ptr + len - (char *)nextevent);
+            printf("first = %d; remaining bytes = %ld\n", first, event + len - nextevent);
             fflush(stdout);
 #endif
-            FULL_PATH(fullpath, path, event->name);
+            FORMAT_PATH(fullpath, path, event->name);
 
             slot = find_watch_checked(watch, event->wd);
             if (slot > -1 &&
@@ -334,7 +333,7 @@ static size_t process_next_inotify_event(struct arguswatch *watch, const char *p
                 // Cache reached an inconsistent state.
                 reinitialize(watch);
                 // Discard all remaining events in current `read` buffer.
-                return INOTIFY_READ_BUF_LEN;
+                return IN_BUFFER_SIZE;
             }
         } else {
 #if DEBUG
@@ -345,6 +344,7 @@ static size_t process_next_inotify_event(struct arguswatch *watch, const char *p
             return (size_t)-1;
         }
     } else if (event->mask & IN_Q_OVERFLOW) {
+
         // When the queue overflows, some events are lost, at which point we've
         // lost any chance of keeping our cache consistent with the state of
         // the filesystem. Discard this `inotify` file descriptor and create a
@@ -354,8 +354,9 @@ static size_t process_next_inotify_event(struct arguswatch *watch, const char *p
             reinitialize(watch);
         }
         // Discard all remaining events in current `read` buffer.
-        evtlen = INOTIFY_READ_BUF_LEN;
+        evtlen = IN_EVENT_LEN;
     } else if (event->mask & IN_UNMOUNT) {
+
         // When a filesystem is unmounted, each of the watches on the is
         // dropped, and an unmount and an ignore event are generated. There's
         // nothing left for us to monitor, so we just remove the corresponding
@@ -369,6 +370,7 @@ static size_t process_next_inotify_event(struct arguswatch *watch, const char *p
         // No need to remove the watch; that happens automatically.
     } else if (event->mask & IN_MOVE_SELF &&
         find_root_path(watch, path) != NULL) {
+
         // If the root path moves to a new location in the same filesystem,
         // then all cached pathnames become invalid, and we have no direct way
         // of knowing the new name of the root path. We could in theory find
@@ -388,7 +390,7 @@ static size_t process_next_inotify_event(struct arguswatch *watch, const char *p
                 reinitialize(watch);
             }
             // Discard all remaining events in current `read` buffer.
-            return INOTIFY_READ_BUF_LEN;
+            return IN_BUFFER_SIZE;
         }
     }
 
@@ -397,7 +399,7 @@ static size_t process_next_inotify_event(struct arguswatch *watch, const char *p
         // Only continue with the events we care about.
         !(event->mask & watch->event_mask)) {
         // Discard all remaining events in current `read` buffer.
-        return sizeof(struct inotify_event) + event->len;
+		return IN_BUFFER_SIZE;
     }
 
     struct arguswatch_event awevent = {
@@ -429,17 +431,17 @@ static size_t process_next_inotify_event(struct arguswatch *watch, const char *p
  * @param logfn
  * @return
  */
-static int process_inotify_events(struct arguswatch *watch, void (*logfn)(struct arguswatch_event *)) {
+static void process_inotify_events(struct arguswatch *watch, void (*logfn)(struct arguswatch_event *)) {
+    const struct inotify_event *event;
     // Some systems cannot read integer variables if they are not properly
     // aligned on other systems, incorrect alignment may decrease performance
     // hence, the buffer used for reading from the `inotify` file descriptor
     // should have the same alignment as struct inotify_event.
-    char buf[INOTIFY_READ_BUF_LEN] __attribute__((aligned(__alignof__(struct inotify_event))));
-    ssize_t len, nr;
+    struct inotify_event buf[IN_BUFFER_SIZE] __attribute__((aligned(__alignof__(struct inotify_event))));
+    ssize_t len, readlen;
     size_t evtlen;
     int i;
     bool first = true;
-    char *ptr = NULL;
     struct sigaction sa;
 
     void alarm_handler(int sig) {
@@ -454,31 +456,39 @@ static int process_inotify_events(struct arguswatch *watch, void (*logfn)(struct
 #if DEBUG
         perror("sigaction");
 #endif
-        return EOF;
+        return;
     }
 
-    len = read(watch->fd, buf, INOTIFY_READ_BUF_LEN);
+    len = read(watch->fd, (void *)&buf, IN_BUFFER_SIZE);
     if (len == EOF) {
+        if (errno != EAGAIN) {
 #if DEBUG
-        perror("read");
+            perror("read");
 #endif
-        return EOF;
+        }
+        return;
     } else if (len == 0) {
 #if DEBUG
         fprintf(stderr, "`read` from `inotify` fd returned 0!");
 #endif
-        return EOF;
+        return;
     }
+#if DEBUG
+	printf("`read` got %zd bytes\n", len);
+	fflush(stdout);
+#endif
 
-    // Process each event in the buffer returned by `read` loop over all events
-    // in the buffer.
-    for (ptr = buf; ptr < buf + len; /*ptr += sizeof(struct inotify_event) + event->len*/) {
-        evtlen = process_next_inotify_event(watch, ptr, buf + len - ptr, first, logfn);
+    // Point to the first event in the buffer.
+    event = buf;
 
-        if (evtlen > 0) {
-            ptr += evtlen;
-            first = true;
-        } else {
+    // Process each event in the buffer returned by `read`. Loop over all
+    // events in the buffer.
+    while (IN_EVENT_OK(event, buf, len)) {
+        evtlen = process_next_inotify_event(watch, event, buf + len - event, first, logfn);
+        // Set `first` for the next `process_next_inotify_event` call.
+        first = (bool)(evtlen > 0);
+
+        if (evtlen == EOF) {
             // We got here because an IN_MOVED_FROM event was found at the end
             // of a previously read buffer and that event may be part of an
             // "intra-tree" `rename`, meaning that we should check if there is
@@ -489,14 +499,12 @@ static int process_inotify_events(struct arguswatch *watch, void (*logfn)(struct
             // we only want to do this once: if the `read` below fails to
             // gather further events, then when we reprocess the IN_MOVED_FROM
             // we should treat it as though this is an out-of-tree `rename`.
-            // Set `first` to 0 for the next `process_next_inotify_event` call.
             int savederr;
-            first = false;
-            len = buf + len - ptr;
+            len = buf + len - event;
 
             // Shuffle remaining bytes to start of buffer.
             for (i = 0; i < len; ++i) {
-                buf[i] = ptr[i];
+                buf[i] = event[i];
             }
 
             // Set a timeout for `read. Some rough testing suggests that a
@@ -507,7 +515,7 @@ static int process_inotify_events(struct arguswatch *watch, void (*logfn)(struct
             // hardware and in environments with different filesystem activity
             // levels.
             ualarm(2000, 0);
-            nr = read(watch->fd, buf + len, INOTIFY_READ_BUF_LEN - len);
+            readlen = read(watch->fd, buf + len, IN_BUFFER_SIZE);
 
             // In case `ualarm` should change errno.
             savederr = errno;
@@ -515,22 +523,22 @@ static int process_inotify_events(struct arguswatch *watch, void (*logfn)(struct
             ualarm(0, 0);
             errno = savederr;
 
-            if (nr == EOF && errno != EINTR) {
+            if (readlen == EOF && errno != EINTR) {
 #if DEBUG
                 perror("read");
 #endif
-                return EOF;
-            } else if (nr == 0) {
+                return;
+            } else if (readlen == 0) {
 #if DEBUG
                 fprintf(stderr, "`read` from `inotify` fd returned 0!");
 #endif
-                return EOF;
+                return;
             }
 
             if (errno != -1) {
-                len += nr;
+                len += readlen;
 #if DEBUG
-                printf("secondary `read` got %zd bytes\n", nr);
+                printf("secondary `read` got %zd bytes\n", readlen);
                 fflush(stdout);
 #endif
             } else {
@@ -541,10 +549,12 @@ static int process_inotify_events(struct arguswatch *watch, void (*logfn)(struct
 #endif
             }
             // Start again at beginning of buffer.
-            ptr = buf;
+            event = buf;
         }
+
+        // Advance to next event.
+        event = IN_EVENT_NEXT(event, len, evtlen);
     }
-    return 0;
 }
 
 /**
@@ -656,9 +666,7 @@ int start_inotify_watcher(char *name, const int pid, const int sid, char *nodena
         if (pollc > 0) {
             if (fds[0].revents & POLLIN) {
                 // `inotify` events are available.
-                if (process_inotify_events(&watch, logfn) == EOF) {
-                    //goto exit;
-                }
+                process_inotify_events(&watch, logfn);
             }
 
             if (fds[1].revents & POLLIN) {
