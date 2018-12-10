@@ -31,7 +31,9 @@
 
 #include "argusutil.h"
 
+#ifndef ARGUSNOTIFY_KILL
 #define ARGUSNOTIFY_KILL SIGKILL
+#endif
 
 static const size_t INOTIFY_READ_BUF_LEN = (100 * (sizeof(struct inotify_event) + NAME_MAX + 1));
 

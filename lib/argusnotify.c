@@ -160,7 +160,7 @@ static size_t process_next_inotify_event(struct arguswatch *watch, const char *p
         (event->mask & (IN_CREATE | IN_MOVED_TO))) {
         // A new subdirectory was created, or a subdirectory was renamed into
         // the tree; create watches for it, and all of its subdirectories.
-        snprintf(fullpath, sizeof(fullpath), "%s/%s", path, event->name);
+        FULL_PATH(fullpath, path, event->name);
 
 #if DEBUG
         printf("directory creation on wd %d: %s\n", event->wd, fullpath);
@@ -326,7 +326,7 @@ static size_t process_next_inotify_event(struct arguswatch *watch, const char *p
             printf("first = %d; remaining bytes = %ld\n", first, ptr + len - (char *)nextevent);
             fflush(stdout);
 #endif
-            snprintf(fullpath, sizeof(fullpath), "%s/%s", path, event->name);
+            FULL_PATH(fullpath, path, event->name);
 
             slot = find_watch_checked(watch, event->wd);
             if (slot > -1 &&

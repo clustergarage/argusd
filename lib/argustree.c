@@ -375,8 +375,8 @@ void rewrite_cached_paths(const struct arguswatch *watch, const char *oldpathpf,
     size_t len;
     int i, j;
 
-    snprintf(fullpath, sizeof(fullpath), "%s/%s", oldpathpf, oldname);
-    snprintf(newpf, sizeof(newpf), "%s/%s", newpathpf, newname);
+    FULL_PATH(fullpath, oldpathpf, oldname);
+    FULL_PATH(newpf, newpathpf, newname);
     len = strlen(fullpath);
 
 #if DEBUG
@@ -393,7 +393,8 @@ void rewrite_cached_paths(const struct arguswatch *watch, const char *oldpathpf,
             if (strncmp(fullpath, wlcache[i].paths[j], len) == 0 &&
                 (wlcache[i].paths[j][len] == '/' ||
                 wlcache[i].paths[j][len] == '\0')) {
-                snprintf(newpath, sizeof(newpath), "%s%s", newpf, &wlcache[i].paths[j][len]);
+                FULL_PATH(newpath, newpf, &wlcache[i].paths[j][len]);
+                //snprintf(newpath, sizeof(newpath), "%s%s", newpf, &wlcache[i].paths[j][len]);
                 wlcache[i].paths[j] = strdup(newpath);
 #if DEBUG
                 printf("    wd %d [cache slot %d] ==> %s\n", wlcache[i].wd[j], i, newpath);

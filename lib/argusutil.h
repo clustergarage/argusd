@@ -27,11 +27,17 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <string.h>
 #include <unistd.h>
 
 #ifndef DEBUG
 #define DEBUG 0
 #endif
+
+#define FULL_PATH(fullpath, directory, file) \
+do { \
+    snprintf(fullpath, sizeof(fullpath), "%s/%s", directory, file); \
+} while(0)
 
 struct arguswatch {
     const char *name;                 // Name of ArgusWatcher.
@@ -59,7 +65,5 @@ struct arguswatch {
 
 struct arguswatch *wlcache; // Array of cached watches.
 int wlcachec;
-
-void join_namespace(pid_t pid, const char *ns);
 
 #endif
