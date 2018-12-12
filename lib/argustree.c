@@ -146,8 +146,8 @@ void remove_root_path(struct arguswatch *watch, const char *path) {
     }
     *p = NULL;
 
-    ++watch->ignored_rootpathc;
-    if (watch->ignored_rootpathc == watch->rootpathc) {
+    --watch->rootpathc;
+    if (watch->rootpathc == 0) {
 #if DEBUG
         printf("no more root paths left to monitor\n");
         fflush(stdout);
@@ -451,8 +451,8 @@ int remove_subtree(const struct arguswatch *watch, char *path) {
 #endif
 
                         // When we have multiple renamers, sometimes
-                        // `inotify_rm_watch` fails. In this case, force a
-                        // cache rebuild by returning -1.
+                        // `inotify_rm_watch` fails. In this case, force a cache
+                        // rebuild by returning -1.
                         cnt = -1;
                         break;
                     }

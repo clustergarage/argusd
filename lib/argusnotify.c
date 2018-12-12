@@ -136,7 +136,7 @@ static size_t process_next_inotify_event(struct arguswatch *watch, const struct 
         snprintf(path, sizeof(path), "%s", wd_to_path_name(watch, event->wd));
 
         if (!(event->mask & IN_IGNORED)) {
-            // IN_Q_OVERFLOW has (event->wd == -1). Skip IN_IGNORED, since it
+            // IN_Q_OVERFLOW has (event->wd == EOF). Skip IN_IGNORED, since it
             // will come after an event that has already removed the
             // corresponding cache entry. Cache consistency check. See the
             // discussion of "intra-tree" `rename` events.
@@ -157,7 +157,7 @@ static size_t process_next_inotify_event(struct arguswatch *watch, const struct 
     if ((event->mask & IN_ISDIR) &&
         (event->mask & (IN_CREATE | IN_MOVED_TO))) {
         // A new subdirectory was created, or a subdirectory was renamed into
-        // the tree; create watches for it, and all of its subdirectories.
+        // the tree. Create watches for it, and all of its subdirectories.
         FORMAT_PATH(fullpath, path, event->name);
 
 #if DEBUG
@@ -215,7 +215,7 @@ static size_t process_next_inotify_event(struct arguswatch *watch, const struct 
         if (slot > -1) {
             mark_cache_slot_empty(slot);
         }
-        // No need to remove the watch, that happens automatically.
+        // ... no need to remove the watch, that happens automatically.
     } else if ((event->mask & (IN_MOVED_FROM | IN_ISDIR)) == (IN_MOVED_FROM | IN_ISDIR)) {
         /**
          * We have a "moved from" event. To know how to deal with it, we need
@@ -344,7 +344,6 @@ static size_t process_next_inotify_event(struct arguswatch *watch, const struct 
             return (size_t)-1;
         }
     } else if (event->mask & IN_Q_OVERFLOW) {
-
         // When the queue overflows, some events are lost, at which point we've
         // lost any chance of keeping our cache consistent with the state of
         // the filesystem. Discard this `inotify` file descriptor and create a
@@ -356,7 +355,6 @@ static size_t process_next_inotify_event(struct arguswatch *watch, const struct 
         // Discard all remaining events in current `read` buffer.
         evtlen = IN_EVENT_LEN;
     } else if (event->mask & IN_UNMOUNT) {
-
         // When a filesystem is unmounted, each of the watches on the is
         // dropped, and an unmount and an ignore event are generated. There's
         // nothing left for us to monitor, so we just remove the corresponding
@@ -392,6 +390,7 @@ static size_t process_next_inotify_event(struct arguswatch *watch, const struct 
             // Discard all remaining events in current `read` buffer.
             return IN_BUFFER_SIZE;
         }
+        goto out_checkcacheconsistency;
     }
 
     slot = find_watch_checked(watch, event->wd);
@@ -399,7 +398,7 @@ static size_t process_next_inotify_event(struct arguswatch *watch, const struct 
         // Only continue with the events we care about.
         !(event->mask & watch->event_mask)) {
         // Discard all remaining events in current `read` buffer.
-		return IN_BUFFER_SIZE;
+        return IN_BUFFER_SIZE;
     }
 
     struct arguswatch_event awevent = {
@@ -419,6 +418,7 @@ static size_t process_next_inotify_event(struct arguswatch *watch, const struct 
     // Call ArgusdImpl log function passed into this watch.
     logfn(&awevent);
 
+out_checkcacheconsistency:
     check_cache_consistency(watch);
 
     return evtlen;
@@ -474,8 +474,8 @@ static void process_inotify_events(struct arguswatch *watch, void (*logfn)(struc
         return;
     }
 #if DEBUG
-	printf("`read` got %zd bytes\n", len);
-	fflush(stdout);
+    printf("`read` got %zd bytes\n", len);
+    fflush(stdout);
 #endif
 
     // Point to the first event in the buffer.
@@ -638,7 +638,7 @@ int start_inotify_watcher(char *name, const int pid, const int sid, char *nodena
     // Create an `inotify` instance and populate it with entries for paths.
     fd = reinitialize(&watch);
     if (fd == EOF) {
-        goto exit;
+        goto out;
     }
 
     // Prepare for polling.
@@ -660,7 +660,7 @@ int start_inotify_watcher(char *name, const int pid, const int sid, char *nodena
 #if DEBUG
             perror("ppoll");
 #endif
-            goto exit;
+            goto out;
         }
 
         if (pollc > 0) {
@@ -681,7 +681,7 @@ int start_inotify_watcher(char *name, const int pid, const int sid, char *nodena
         }
     }
 
-exit:
+out:
 #if DEBUG
     printf("  Listening for events stopped (pid = %d, sid = %d)\n", pid, sid);
     fflush(stdout);

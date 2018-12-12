@@ -78,6 +78,10 @@ void check_cache_consistency(const struct arguswatch *watch) {
 
     for (i = 0; i < wlcachec; ++i) {
         for (j = 0; j < wlcache[i].pathc; ++j) {
+            if (*wlcache[i].paths[j] == '\0') {
+                continue;
+            }
+
             if (lstat(wlcache[i].paths[j], &sb) == EOF) {
 #if DEBUG
                 printf("check_cache_consistency: stat: [slot = %d; wd = %d] %s: %s\n",
@@ -115,6 +119,7 @@ void remove_item_from_cache(struct arguswatch *watch, int const index) {
     for (i = index; i < watch->pathc - 1; ++i) {
         watch->wd[i] = watch->wd[i + 1];
         watch->paths[i] = watch->paths[i + 1];
+        *watch->paths[i + 1] = '\0';
     }
     --watch->pathc;
 }

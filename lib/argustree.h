@@ -29,6 +29,7 @@
 
 void copy_root_paths(struct arguswatch *watch);
 char **find_root_path(const struct arguswatch *watch, const char *path);
+char **find_path(const struct arguswatch *watch, const char *path);
 void remove_root_path(struct arguswatch *watch, const char *path);
 bool should_ignore_path(struct arguswatch *watch, const char *path);
 int watch_path(struct arguswatch *watch, const char *path);

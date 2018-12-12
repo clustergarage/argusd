@@ -31,7 +31,7 @@
 #include <unistd.h>
 
 #ifndef DEBUG
-#define DEBUG 0
+#define DEBUG 1
 #endif
 
 #define IN_EVENT_LEN (sizeof(struct inotify_event))
