@@ -432,20 +432,20 @@ int remove_subtree(const struct arguswatch *watch, char *path) {
             wlcache[i].sid != watch->sid) {
             continue;
         }
-        if (wlcache[i].pathc > -1) {
+        if (wlcache[i].pathc) {
             for (j = 0; j < wlcache[i].pathc; ++j) {
                 if (strncmp(pn, wlcache[i].paths[j], len) == 0 &&
                     (wlcache[i].paths[j][len] == '/' ||
                     wlcache[i].paths[j][len] == '\0')) {
 #if DEBUG
-                    printf("    removing watch: wd = %d (%s)\n",
+                    printf("  removing watch: wd = %d (%s)\n",
                         wlcache[i].wd[j], wlcache[i].paths[j]);
                     fflush(stdout);
 #endif
 
                     if (inotify_rm_watch(watch->fd, wlcache[i].wd[j]) == EOF) {
 #if DEBUG
-                        printf("inotify_rm_watch wd = %d (%s): %s\n", wlcache[i].wd[j],
+                        printf("    inotify_rm_watch wd = %d (%s): %s\n", wlcache[i].wd[j],
                             wlcache[i].paths[j], strerror(errno));
                         fflush(stdout);
 #endif

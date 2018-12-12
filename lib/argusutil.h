@@ -31,7 +31,7 @@
 #include <unistd.h>
 
 #ifndef DEBUG
-#define DEBUG 1
+#define DEBUG 0
 #endif
 
 #define IN_EVENT_LEN (sizeof(struct inotify_event))
@@ -41,6 +41,26 @@
 
 #define FORMAT_PATH(fp, dir, file) do {           \
     snprintf(fp, sizeof(fp), "%s/%s", dir, file); \
+} while(0)
+
+#define DUMP_CACHE(watch) do {                                               \
+    printf("  $$$$ watch cache:\n");                                         \
+    printf("    $$   fd = %d\n", (watch)->fd);                               \
+    printf("    $$   rootpathc = %d\n", (watch)->rootpathc);                 \
+    fflush(stdout);                                                          \
+    for (int i = 0; i < (watch)->rootpathc; ++i) {                           \
+        printf("     $     rootpaths[%d] = %s\n", i, (watch)->rootpaths[i]); \
+        fflush(stdout);                                                      \
+    }                                                                        \
+    printf("    $$   pathc = %d\n", (watch)->pathc);                         \
+    for (int i = 0; i < (watch)->pathc; ++i) {                               \
+        printf("     $     wd[%d] = %d\n", i, (watch)->wd[i]);               \
+        printf("     $     paths[%d] = %s\n", i, (watch)->paths[i]);         \
+        fflush(stdout);                                                      \
+    }                                                                        \
+    printf("    $$   event_mask = %d\n", (watch)->event_mask);               \
+    printf("    $$   recursive = %d\n", (watch)->recursive);                 \
+    fflush(stdout);                                                          \
 } while(0)
 
 struct arguswatch {

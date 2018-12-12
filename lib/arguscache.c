@@ -77,14 +77,13 @@ void check_cache_consistency(const struct arguswatch *watch) {
     int i, j;
 
     for (i = 0; i < wlcachec; ++i) {
-        for (j = 0; j < wlcache[i].pathc; ++j) {
+        for (j = 0; j < wlcache[i].pathc;) {
             if (*wlcache[i].paths[j] == '\0') {
-                continue;
+                goto out_incconsistencyloop;
             }
-
             if (lstat(wlcache[i].paths[j], &sb) == EOF) {
 #if DEBUG
-                printf("check_cache_consistency: stat: [slot = %d; wd = %d] %s: %s\n",
+                printf("%s: stat: [slot = %d; wd = %d] %s: %s\n", __func__,
                     i, wlcache[i].wd[j], wlcache[i].paths[j], strerror(errno));
                 fflush(stdout);
 #endif
@@ -95,12 +94,15 @@ void check_cache_consistency(const struct arguswatch *watch) {
             if (watch->only_dir &&
                 !S_ISDIR(sb.st_mode)) {
 #if DEBUG
-                fprintf(stderr, "check_cache_consistency: %s is not a directory\n",
+                fprintf(stderr, "%s: %s is not a directory\n", __func__,
                     wlcache[i].paths[j]);
 #endif
                 remove_item_from_cache(&wlcache[i], j);
                 continue;
             }
+
+out_incconsistencyloop:
+            ++j;
         }
     }
 }
@@ -117,11 +119,21 @@ void check_cache_consistency(const struct arguswatch *watch) {
 void remove_item_from_cache(struct arguswatch *watch, int const index) {
     int i;
     for (i = index; i < watch->pathc - 1; ++i) {
-        watch->wd[i] = watch->wd[i + 1];
-        watch->paths[i] = watch->paths[i + 1];
-        *watch->paths[i + 1] = '\0';
+        // @TODO: cleanup
+        if (watch->wd[i + 1] != EOF) {
+            watch->wd[i], watch->wd[i + 1];
+            watch->wd[i + 1] = EOF;
+        } else {
+            watch->wd[i] = EOF;
+        }
+
+        if (*watch->paths[i + 1] != '\0') {
+            sprintf(watch->paths[i], "%s", watch->paths[i + 1]);
+            *watch->paths[i + 1] = '\0';
+        } else {
+            *watch->paths[i] = '\0';
+        }
     }
-    --watch->pathc;
 }
 
 /**
