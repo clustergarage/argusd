@@ -52,7 +52,7 @@
  */
 static int reinitialize(struct arguswatch *watch) {
     int fd, slot;
-    bool rebuild = watch->fd != EOF;
+    bool rebuild = (bool)(watch->fd != EOF);
 
     if (rebuild) {
         close(watch->fd);
@@ -90,12 +90,12 @@ static int reinitialize(struct arguswatch *watch) {
 #if DEBUG
     int i, cnt;
     for (i = 0, cnt = 0; i < wlcachec; ++i) {
-        if (wlcache[i].pid != watch->pid ||
-            wlcache[i].sid != watch->sid) {
+        if (wlcache[i]->pid != watch->pid ||
+            wlcache[i]->sid != watch->sid) {
             continue;
         }
-        if (wlcache[i].pathc != EOF) {
-            cnt += wlcache[i].pathc;
+        if (wlcache[i]->pathc != EOF) {
+            cnt += wlcache[i]->pathc;
         }
     }
     if (rebuild) {
@@ -199,7 +199,7 @@ static size_t process_next_inotify_event(struct arguswatch *watch, const struct 
                 watch->pathc = 0;
                 watch_subtree(watch);
                 // @TODO: Verify that this works.
-                wlcache[watch->slot] = *watch;
+                wlcache[watch->slot] = watch;
             }
         }
     } else if (event->mask & IN_DELETE_SELF) {
@@ -364,7 +364,7 @@ static size_t process_next_inotify_event(struct arguswatch *watch, const struct 
         fflush(stdout);
 #endif
         send_watcher_kill_signal(watch->processevtfd);
-        mark_cache_slot_empty(slot);
+        mark_cache_slot_empty(watch->slot);
         // No need to remove the watch; that happens automatically.
     } else if (event->mask & IN_MOVE_SELF &&
         find_root_path(watch, path) != NULL) {
@@ -379,6 +379,35 @@ static size_t process_next_inotify_event(struct arguswatch *watch, const struct 
         printf("root path moved: %s\n", path);
         fflush(stdout);
 #endif
+
+        //======================
+
+        char proc_path[PATH_MAX], new_path[PATH_MAX], pidc[8];
+        snprintf(proc_path, sizeof(proc_path), "/proc/%d/root/.", watch->pid);
+        snprintf(pidc, sizeof(pidc), "%d", watch->pid);
+        struct stat *root_stat = find_root_stat(watch, path);
+
+        int traverse_stuff(const char *path, const struct stat *sb, int tflag, struct FTW *ftwbuf) {
+            if (root_stat->st_ino == sb->st_ino) {
+                //printf(" ][][ TRAVERSAL FOUND ][][ %s \n", path);
+                //fflush(stdout);
+                snprintf(new_path, sizeof(new_path), "/proc/%d/root%s", watch->pid,
+                    path + (strlen(pidc) + 13));
+                return FTW_STOP;
+            }
+            return FTW_CONTINUE;
+        }
+        if (nftw(proc_path, traverse_stuff, 20, FTW_ACTIONRETVAL | FTW_CHDIR/* | FTW_PHYS*/) == EOF) {
+#if DEBUG
+            printf("nftw: %s: %s (directory probably deleted before we could watch)\n",
+                path, strerror(errno));
+            fflush(stdout);
+#endif
+        }
+
+        //======================
+
+#if 0
         remove_root_path(watch, path);
 
         if (remove_subtree(watch, path) == -1) {
@@ -390,7 +419,10 @@ static size_t process_next_inotify_event(struct arguswatch *watch, const struct 
             // Discard all remaining events in current `read` buffer.
             return IN_BUFFER_SIZE;
         }
-        goto out_checkcacheconsistency;
+#endif
+
+        replace_root_path(watch, path, new_path);
+        reinitialize(watch);
     }
 
     slot = find_watch_checked(watch, event->wd);
@@ -418,7 +450,6 @@ static size_t process_next_inotify_event(struct arguswatch *watch, const struct 
     // Call ArgusdImpl log function passed into this watch.
     logfn(&awevent);
 
-out_checkcacheconsistency:
     check_cache_consistency(watch);
 
     return evtlen;
@@ -596,15 +627,16 @@ int start_inotify_watcher(char *name, const int pid, const int sid, char *nodena
     sigaddset(&sigmask, SIGCHLD);
 
     // To keep this function idempotent we need to handle both existing
-    // arguswatch configuration updates as well as new ones. `inotify_add_watch`
-    // will also handle updates properly if a wd exists for the supplied path.
-    struct arguswatch watch;
+    // arguswatch configuration updates as well as new ones.
+    // `inotify_add_watch` will also handle updates properly if a wd exists for
+    // the supplied path.
+    struct arguswatch *watch;
     int slot = find_cached_slot(pid, sid);
     if (slot > -1) {
         watch = wlcache[slot];
     } else {
         // Create new arguswatch placeholder struct, to be filled later.
-        watch = (struct arguswatch){
+        watch = &(struct arguswatch){
             .name = name,
             .pid = pid,
             .sid = sid,
@@ -628,7 +660,7 @@ int start_inotify_watcher(char *name, const int pid, const int sid, char *nodena
     }
 
     // Save a copy of the paths.
-    copy_root_paths(&watch);
+    copy_root_paths(watch);
 
 #if DEBUG
     printf("  Listening for events (pid = %d, sid = %d)\n", pid, sid);
@@ -636,7 +668,7 @@ int start_inotify_watcher(char *name, const int pid, const int sid, char *nodena
 #endif
 
     // Create an `inotify` instance and populate it with entries for paths.
-    fd = reinitialize(&watch);
+    fd = reinitialize(watch);
     if (fd == EOF) {
         goto out;
     }
@@ -666,7 +698,7 @@ int start_inotify_watcher(char *name, const int pid, const int sid, char *nodena
         if (pollc > 0) {
             if (fds[0].revents & POLLIN) {
                 // `inotify` events are available.
-                process_inotify_events(&watch, logfn);
+                process_inotify_events(watch, logfn);
             }
 
             if (fds[1].revents & POLLIN) {
@@ -690,7 +722,7 @@ out:
     // Close `inotify` file descriptor.
     close(fd);
     // Free watch cache.
-    free_cache(&watch);
+    free_cache(watch);
 
     return errno ? EXIT_FAILURE : EXIT_SUCCESS;
 }

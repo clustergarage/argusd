@@ -35,11 +35,11 @@
 
 void free_cache(struct arguswatch *cache);
 int find_cached_slot(int pid, int sid);
-void check_cache_consistency(const struct arguswatch *watch);
+void check_cache_consistency(struct arguswatch *watch);
 void remove_item_from_cache(struct arguswatch *watch, int index);
 int find_watch(const struct arguswatch *watch, int wd);
 int find_watch_checked(const struct arguswatch *watch, int wd);
-void mark_cache_slot_empty(int slot);
+void mark_cache_slot_empty(const int slot);
 int find_empty_cache_slot();
 void add_watch_to_cache(struct arguswatch *watch);
 int path_name_to_cache_slot(const struct arguswatch *watch, const char *path);

@@ -124,6 +124,17 @@ char **find_root_path(const struct arguswatch *watch, const char *path) {
     return NULL;
 }
 
+struct stat *find_root_stat(const struct arguswatch *watch, const char *path) {
+    int i;
+    for (i = 0; i < watch->rootpathc; ++i) {
+        if (watch->rootpaths[i] != NULL &&
+            strcmp(path, watch->rootpaths[i]) == 0) {
+            return &watch->rootstat[i];
+        }
+    }
+    return NULL;
+}
+
 /**
  * Ceased to monitor a root path name (probably because it was renamed). Remove
  * this path from the root path list.
@@ -134,12 +145,12 @@ char **find_root_path(const struct arguswatch *watch, const char *path) {
 void remove_root_path(struct arguswatch *watch, const char *path) {
     char **p = find_root_path(watch, path);
 #if DEBUG
-    printf("remove_root_path: %s\n", path);
+    printf("%s: %s\n", __func__, path);
     fflush(stdout);
 #endif
     if (p == NULL) {
 #if DEBUG
-        printf("remove_root_path: path not found!\n");
+        printf("%s: path not found!\n", __func__);
         fflush(stdout);
 #endif
         return;
@@ -153,6 +164,22 @@ void remove_root_path(struct arguswatch *watch, const char *path) {
         fflush(stdout);
 #endif
     }
+}
+
+void replace_root_path(struct arguswatch *watch, const char *path, const char *newpath) {
+    char **p = find_root_path(watch, path);
+#if DEBUG
+    printf("%s: %s -> %s\n", __func__, path, newpath);
+    fflush(stdout);
+#endif
+    if (p == NULL) {
+#if DEBUG
+        printf("%s: path not found!\n", __func__);
+        fflush(stdout);
+#endif
+        return;
+    }
+    *p = (char *)newpath;
 }
 
 /**
@@ -335,6 +362,14 @@ int watch_path_recursive(struct arguswatch *watch, const char *path) {
     return watch->pathc;
 }
 
+void watch_subtree_path(struct arguswatch *watch, const char *path) {
+    if (watch->recursive) {
+        watch_path_recursive(watch, path);
+    } else {
+        watch_path(watch, path);
+    }
+}
+
 /**
  * Add watches and cache entries for a subtree, logging a message noting the
  * number entries added.
@@ -344,11 +379,7 @@ int watch_path_recursive(struct arguswatch *watch, const char *path) {
 void watch_subtree(struct arguswatch *watch) {
     int i;
     for (i = 0; i < watch->rootpathc; ++i) {
-        if (watch->recursive) {
-            watch_path_recursive(watch, watch->rootpaths[i]);
-        } else {
-            watch_path(watch, watch->rootpaths[i]);
-        }
+        watch_subtree_path(watch, watch->rootpaths[i]);
 #if DEBUG
         printf("  watch_subtree: %s: %d entries added\n",
             watch->rootpaths[i], watch->pathc);
@@ -380,23 +411,24 @@ void rewrite_cached_paths(const struct arguswatch *watch, const char *oldpathpf,
     len = strlen(fullpath);
 
 #if DEBUG
-    printf("rename: %s ==> %s\n", fullpath, newpf);
+    printf("rename: %s -> %s\n", fullpath, newpf);
     fflush(stdout);
 #endif
 
     for (i = 0; i < wlcachec; ++i) {
-        if (wlcache[i].pid != watch->pid ||
-            wlcache[i].sid != watch->sid) {
+        if (wlcache[i]->pid != watch->pid ||
+            wlcache[i]->sid != watch->sid) {
             continue;
         }
-        for (j = 0; j < wlcache[i].pathc; ++j) {
-            if (strncmp(fullpath, wlcache[i].paths[j], len) == 0 &&
-                (wlcache[i].paths[j][len] == '/' ||
-                wlcache[i].paths[j][len] == '\0')) {
-                FORMAT_PATH(newpath, newpf, &wlcache[i].paths[j][len]);
-                wlcache[i].paths[j] = strdup(newpath);
+        for (j = 0; j < wlcache[i]->pathc; ++j) {
+            if (strncmp(fullpath, wlcache[i]->paths[j], len) == 0 &&
+                (wlcache[i]->paths[j][len] == '/' ||
+                wlcache[i]->paths[j][len] == '\0')) {
+
+                FORMAT_PATH(newpath, newpf, &wlcache[i]->paths[j][len]);
+                wlcache[i]->paths[j] = strdup(newpath);
 #if DEBUG
-                printf("    wd %d [cache slot %d] ==> %s\n", wlcache[i].wd[j], i, newpath);
+                printf("    wd %d [cache slot %d] ==> %s\n", wlcache[i]->wd[j], i, newpath);
                 fflush(stdout);
 #endif
             }
@@ -420,7 +452,8 @@ int remove_subtree(const struct arguswatch *watch, char *path) {
     // The argument we receive might be a pointer to a path string that is
     // actually stored in the cache. If we remove that path part way through
     // scanning the whole cache then chaos ensues; so, create a temporary copy.
-    char *pn = strdup(path);
+    char *pn;
+    strcpy(pn, path);
 
 #if DEBUG
     printf("removing subtree: %s\n", path);
@@ -428,25 +461,25 @@ int remove_subtree(const struct arguswatch *watch, char *path) {
 #endif
 
     for (i = 0; i < wlcachec; ++i) {
-        if (wlcache[i].pid != watch->pid ||
-            wlcache[i].sid != watch->sid) {
+        if (wlcache[i]->pid != watch->pid ||
+            wlcache[i]->sid != watch->sid) {
             continue;
         }
-        if (wlcache[i].pathc) {
-            for (j = 0; j < wlcache[i].pathc; ++j) {
-                if (strncmp(pn, wlcache[i].paths[j], len) == 0 &&
-                    (wlcache[i].paths[j][len] == '/' ||
-                    wlcache[i].paths[j][len] == '\0')) {
+        if (wlcache[i]->pathc) {
+            for (j = 0; j < wlcache[i]->pathc; ++j) {
+                if (strncmp(pn, wlcache[i]->paths[j], len) == 0 &&
+                    (wlcache[i]->paths[j][len] == '/' ||
+                    wlcache[i]->paths[j][len] == '\0')) {
 #if DEBUG
                     printf("  removing watch: wd = %d (%s)\n",
-                        wlcache[i].wd[j], wlcache[i].paths[j]);
+                        wlcache[i]->wd[j], wlcache[i]->paths[j]);
                     fflush(stdout);
 #endif
 
-                    if (inotify_rm_watch(watch->fd, wlcache[i].wd[j]) == EOF) {
+                    if (inotify_rm_watch(watch->fd, wlcache[i]->wd[j]) == EOF) {
 #if DEBUG
-                        printf("    inotify_rm_watch wd = %d (%s): %s\n", wlcache[i].wd[j],
-                            wlcache[i].paths[j], strerror(errno));
+                        printf("    inotify_rm_watch wd = %d (%s): %s\n", wlcache[i]->wd[j],
+                            wlcache[i]->paths[j], strerror(errno));
                         fflush(stdout);
 #endif
 
