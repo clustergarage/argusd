@@ -451,15 +451,12 @@ void logArgusWatchEvent(struct arguswatch_event *awevent) {
     else if (awevent->event_mask & IN_MOVED_TO)      maskStr = "MOVED_TO";
     else if (awevent->event_mask & IN_OPEN)          maskStr = "OPEN";
 
+    fmt::memory_buffer out;
     try {
-        fmt::memory_buffer out;
-        std::string pathName(std::regex_replace(awevent->path_name,
-            std::regex("/proc/[0-9]+/root"), ""));
-
         fmt::format_to(out, *awevent->watch->log_format ? std::string(awevent->watch->log_format) : kDefaultFormat,
             fmt::arg("event", maskStr),
             fmt::arg("ftype", awevent->is_dir ? "directory" : "file"),
-            fmt::arg("path", pathName),
+            fmt::arg("path", std::regex_replace(awevent->path_name, std::regex("/proc/[0-9]+/root"), "")),
             fmt::arg("file", awevent->file_name),
             fmt::arg("sep", *awevent->file_name ? "/" : ""),
             fmt::arg("pod", awevent->watch->pod_name),
@@ -470,6 +467,7 @@ void logArgusWatchEvent(struct arguswatch_event *awevent) {
         LOG(WARNING) << "Malformed ArgusWatcher `.spec.logFormat`: \"" << e.what() << "\"";
     }
 
+#if 0
     if (kMetricsWriter != nullptr) {
         auto metric = std::make_shared<argus::ArgusdMetricsHandle>();
         metric->set_arguswatcher(awevent->watch->name);
@@ -481,6 +479,7 @@ void logArgusWatchEvent(struct arguswatch_event *awevent) {
             // Broken stream.
         }
     }
+#endif
 }
 #ifdef __cplusplus
 }; // extern "C"

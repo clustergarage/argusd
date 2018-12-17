@@ -44,7 +44,7 @@
 } while(0)
 
 #define DUMP_CACHE(watch) do {                                               \
-    printf("  $$$$ watch = %p:\n", (void *)(watch));                          \
+    printf("  $$$$ watch = %p:\n", (void *)(watch));                         \
     printf("    $$   fd = %d\n", (watch)->fd);                               \
     printf("    $$   rootpathc = %d\n", (watch)->rootpathc);                 \
     fflush(stdout);                                                          \
@@ -87,7 +87,7 @@ struct arguswatch {
     const char *log_format;           // Custom logging format for printing ArgusWatcher event.
 };
 
-struct arguswatch **wlcache; // Array of cached watches.
-int wlcachec;
+extern struct arguswatch *wlcache; // Array of cached watches.
+extern int wlcachec;
 
 #endif

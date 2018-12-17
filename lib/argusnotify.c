@@ -52,7 +52,7 @@
  */
 static int reinitialize(struct arguswatch *watch) {
     int fd, slot;
-    bool rebuild = (bool)(watch->fd != EOF);
+    bool rebuild = watch->fd != EOF;
 
     if (rebuild) {
         close(watch->fd);
@@ -77,7 +77,7 @@ static int reinitialize(struct arguswatch *watch) {
 #endif
 
     // Free watch cache.
-    free_cache(watch);
+    clear_watch(watch);
     // Begin traversing tree, or non-recursive directories.
     watch_subtree(watch);
 
@@ -90,12 +90,12 @@ static int reinitialize(struct arguswatch *watch) {
 #if DEBUG
     int i, cnt;
     for (i = 0, cnt = 0; i < wlcachec; ++i) {
-        if (wlcache[i]->pid != watch->pid ||
-            wlcache[i]->sid != watch->sid) {
+        if (wlcache[i].pid != watch->pid ||
+            wlcache[i].sid != watch->sid) {
             continue;
         }
-        if (wlcache[i]->pathc != EOF) {
-            cnt += wlcache[i]->pathc;
+        if (wlcache[i].pathc) {
+            cnt += wlcache[i].pathc;
         }
     }
     if (rebuild) {
@@ -129,11 +129,41 @@ static size_t process_next_inotify_event(struct arguswatch *watch, const struct 
     bool first, void (*logfn)(struct arguswatch_event *)) {
 
     size_t evtlen;
-    char path[PATH_MAX], fullpath[PATH_MAX + NAME_MAX + 1];
+    char *path = NULL;
+    char fullpath[PATH_MAX + NAME_MAX + 1];
     int slot = -1, wdslot;
 
     if (event->wd != EOF) {
-        snprintf(path, sizeof(path), "%s", wd_to_path_name(watch, event->wd));
+        path = wd_to_path_name(watch, event->wd);
+
+        // =================== start
+
+        slot = find_watch_checked(watch, event->wd);
+        if (slot == -1 ||
+            // Only continue with the events we care about.
+            !(event->mask & watch->event_mask)) {
+            // Discard all remaining events in current `read` buffer.
+            return IN_BUFFER_SIZE;
+        }
+
+        struct arguswatch_event awevent = {
+            .watch = watch,
+            .event_mask = event->mask,
+            .path_name = path,                          // Name of the watched directory.
+            .file_name = event->len ? event->name : "", // Name of the file.
+            .is_dir = (bool)(event->mask & IN_ISDIR)
+        };
+
+#if DEBUG
+        printf("send event: path = %s; file: %s; event mask = %d; dir: %d\n", awevent.path_name,
+            awevent.file_name, awevent.event_mask, awevent.is_dir);
+        fflush(stdout);
+#endif
+
+        // Call ArgusdImpl log function passed into this watch.
+        logfn(&awevent);
+
+        // =================== end
 
         if (!(event->mask & IN_IGNORED)) {
             // IN_Q_OVERFLOW has (event->wd == EOF). Skip IN_IGNORED, since it
@@ -199,7 +229,8 @@ static size_t process_next_inotify_event(struct arguswatch *watch, const struct 
                 watch->pathc = 0;
                 watch_subtree(watch);
                 // @TODO: Verify that this works.
-                wlcache[watch->slot] = watch;
+                //memcpy(&wlcache[watch->slot], watch, sizeof(struct arguswatch));
+                wlcache[watch->slot] = *watch;
             }
         }
     } else if (event->mask & IN_DELETE_SELF) {
@@ -389,15 +420,13 @@ static size_t process_next_inotify_event(struct arguswatch *watch, const struct 
 
         int traverse_stuff(const char *path, const struct stat *sb, int tflag, struct FTW *ftwbuf) {
             if (root_stat->st_ino == sb->st_ino) {
-                //printf(" ][][ TRAVERSAL FOUND ][][ %s \n", path);
-                //fflush(stdout);
                 snprintf(new_path, sizeof(new_path), "/proc/%d/root%s", watch->pid,
                     path + (strlen(pidc) + 13));
                 return FTW_STOP;
             }
             return FTW_CONTINUE;
         }
-        if (nftw(proc_path, traverse_stuff, 20, FTW_ACTIONRETVAL | FTW_CHDIR/* | FTW_PHYS*/) == EOF) {
+        if (nftw(proc_path, traverse_stuff, 20, FTW_ACTIONRETVAL | FTW_PHYS) == EOF) {
 #if DEBUG
             printf("nftw: %s: %s (directory probably deleted before we could watch)\n",
                 path, strerror(errno));
@@ -425,32 +454,7 @@ static size_t process_next_inotify_event(struct arguswatch *watch, const struct 
         reinitialize(watch);
     }
 
-    slot = find_watch_checked(watch, event->wd);
-    if (slot == -1 ||
-        // Only continue with the events we care about.
-        !(event->mask & watch->event_mask)) {
-        // Discard all remaining events in current `read` buffer.
-        return IN_BUFFER_SIZE;
-    }
-
-    struct arguswatch_event awevent = {
-        .watch = watch,
-        .event_mask = event->mask,
-        .path_name = path,                          // Name of the watched directory.
-        .file_name = event->len ? event->name : "", // Name of the file.
-        .is_dir = (bool)(event->mask & IN_ISDIR)
-    };
-
-#if DEBUG
-    printf("send event: path = %s; file: %s; event mask = %d; dir: %d\n", awevent.path_name,
-        awevent.file_name, awevent.event_mask, awevent.is_dir);
-    fflush(stdout);
-#endif
-
-    // Call ArgusdImpl log function passed into this watch.
-    logfn(&awevent);
-
-    check_cache_consistency(watch);
+    //check_cache_consistency(watch);
 
     return evtlen;
 }
@@ -586,6 +590,10 @@ static void process_inotify_events(struct arguswatch *watch, void (*logfn)(struc
         // Advance to next event.
         event = IN_EVENT_NEXT(event, len, evtlen);
     }
+
+#if 0
+    check_cache_consistency(watch);
+#endif
 }
 
 /**
@@ -633,7 +641,7 @@ int start_inotify_watcher(char *name, const int pid, const int sid, char *nodena
     struct arguswatch *watch;
     int slot = find_cached_slot(pid, sid);
     if (slot > -1) {
-        watch = wlcache[slot];
+        watch = &wlcache[slot];
     } else {
         // Create new arguswatch placeholder struct, to be filled later.
         watch = &(struct arguswatch){
@@ -659,8 +667,8 @@ int start_inotify_watcher(char *name, const int pid, const int sid, char *nodena
         };
     }
 
-    // Save a copy of the paths.
-    copy_root_paths(watch);
+    // Validate root paths with `stat` and for duplicates.
+    validate_root_paths(watch);
 
 #if DEBUG
     printf("  Listening for events (pid = %d, sid = %d)\n", pid, sid);
@@ -722,7 +730,7 @@ out:
     // Close `inotify` file descriptor.
     close(fd);
     // Free watch cache.
-    free_cache(watch);
+    clear_watch(watch);
 
     return errno ? EXIT_FAILURE : EXIT_SUCCESS;
 }

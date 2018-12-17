@@ -34,26 +34,24 @@
 #include "arguscache.h"
 #include "argusutil.h"
 
+struct arguswatch *wlcache = NULL;
+int wlcachec = 0;
+
 /**
  * Deallocate the watch cache.
  *
  * @param watch
  */
-void free_cache(struct arguswatch *watch) {
+void clear_watch(struct arguswatch *watch) {
     const int slot = watch->slot;
     if (slot == -1) {
         return;
     }
-
     // Free up dynamically-allocated memory for `wd` and `paths` arrays.
     free(watch->paths);
     free(watch->wd);
     watch->pathc = 0;
-    wlcache[slot] = watch;
-
-    //mark_cache_slot_empty(slot);
-    //*(struct arguswatch *)watch = *wlcache[slot];
-    //watch = wlcache[slot];
+    mark_cache_slot_empty(slot);
 }
 
 /**
@@ -66,8 +64,8 @@ void free_cache(struct arguswatch *watch) {
 int find_cached_slot(const int pid, const int sid) {
     int i;
     for (i = 0; i < wlcachec; ++i) {
-        if (wlcache[i]->pid == pid &&
-            wlcache[i]->sid == sid) {
+        if (wlcache[i].pid == pid &&
+            wlcache[i].sid == sid) {
             return i;
         }
     }
@@ -123,6 +121,8 @@ out_increaseloop:
  */
 void remove_item_from_cache(struct arguswatch *watch, int const index) {
     int i;
+    printf(" ####### %s => %d\n", __func__, index);
+    fflush(stdout);
     for (i = index; i < watch->pathc - 1; ++i) {
         watch->wd[i] = watch->wd[i + 1];
         watch->paths[i] = watch->paths[i + 1];
@@ -145,8 +145,8 @@ int find_watch(const struct arguswatch *watch, const int wd) {
     if (watch->slot == -1) {
         return -1;
     }
-    for (i = 0; i < wlcache[watch->slot]->pathc; ++i) {
-        if (wlcache[watch->slot]->wd[i] == wd) {
+    for (i = 0; i < wlcache[watch->slot].pathc; ++i) {
+        if (wlcache[watch->slot].wd[i] == wd) {
             return i;
         }
     }
@@ -181,7 +181,7 @@ int find_watch_checked(const struct arguswatch *watch, const int wd) {
  * @param slot
  */
 void mark_cache_slot_empty(const int slot) {
-    wlcache[slot] = &(struct arguswatch){
+    wlcache[slot] = (struct arguswatch){
         .pid = -1,
         .sid = -1,
         .slot = -1,
@@ -202,14 +202,14 @@ void mark_cache_slot_empty(const int slot) {
 int find_empty_cache_slot() {
     int i;
     for (i = 0; i < wlcachec; ++i) {
-        if (wlcache[i]->slot == -1) {
+        if (wlcache[i].slot == -1) {
             return i;
         }
     }
     // No free slot found; resize cache.
     wlcachec += ALLOC_INC;
 
-    wlcache = realloc(wlcache, wlcachec * sizeof(struct arguswatch *));
+    wlcache = realloc(wlcache, wlcachec * sizeof(struct arguswatch));
     if (wlcache == NULL) {
 #if DEBUG
         perror("realloc");
@@ -232,10 +232,13 @@ int find_empty_cache_slot() {
 void add_watch_to_cache(struct arguswatch *watch) {
     int slot = find_empty_cache_slot();
     watch->slot = slot;
-    wlcache[slot] = watch;
-    //// Point `watch` to this `wlcache` slot.
-    //*(struct arguswatch *)watch = *wlcache[slot];
-    watch = wlcache[slot];
+    // Point this `wlcache` slot to `watch`.
+    wlcache[slot] = *watch;
+//    if (memcpy(&wlcache[slot], watch, sizeof(struct arguswatch)) == NULL) {
+//#if DEBUG
+//        perror("memcpy");
+//#endif
+//    }
 }
 
 /**
@@ -249,11 +252,11 @@ void add_watch_to_cache(struct arguswatch *watch) {
 int path_name_to_cache_slot(const struct arguswatch *watch, const char *path) {
     int i;
     if (watch->slot == -1 ||
-        wlcache[watch->slot]->pathc == -1) {
+        wlcache[watch->slot].pathc == -1) {
         return -1;
     }
-    for (i = 0; i < wlcache[watch->slot]->pathc; ++i) {
-        if (strcmp(wlcache[watch->slot]->paths[i], path) == 0) {
+    for (i = 0; i < wlcache[watch->slot].pathc; ++i) {
+        if (strcmp(wlcache[watch->slot].paths[i], path) == 0) {
             return i;
         }
     }
@@ -291,8 +294,8 @@ int wd_to_cache_slot(const struct arguswatch *watch, const int wd) {
     if (watch->slot == -1) {
         return -1;
     }
-    for (i = 0; i < wlcache[watch->slot]->pathc; ++i) {
-        if (wlcache[watch->slot]->wd[i] == wd) {
+    for (i = 0; i < wlcache[watch->slot].pathc; ++i) {
+        if (wlcache[watch->slot].wd[i] == wd) {
             return i;
         }
     }

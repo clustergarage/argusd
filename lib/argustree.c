@@ -39,12 +39,12 @@
 #include "argusutil.h"
 
 /**
- * Duplicate the path names supplied on the command line, perform some sanity
- * checking along the way.
+ * Validate watch root paths are sanity checked before performing any
+ * operations on them.
  *
  * @param watch
  */
-void copy_root_paths(struct arguswatch *watch) {
+void validate_root_paths(struct arguswatch *watch) {
     int i, j;
     struct stat sb;
 
@@ -416,19 +416,19 @@ void rewrite_cached_paths(const struct arguswatch *watch, const char *oldpathpf,
 #endif
 
     for (i = 0; i < wlcachec; ++i) {
-        if (wlcache[i]->pid != watch->pid ||
-            wlcache[i]->sid != watch->sid) {
+        if (wlcache[i].pid != watch->pid ||
+            wlcache[i].sid != watch->sid) {
             continue;
         }
-        for (j = 0; j < wlcache[i]->pathc; ++j) {
-            if (strncmp(fullpath, wlcache[i]->paths[j], len) == 0 &&
-                (wlcache[i]->paths[j][len] == '/' ||
-                wlcache[i]->paths[j][len] == '\0')) {
+        for (j = 0; j < wlcache[i].pathc; ++j) {
+            if (strncmp(fullpath, wlcache[i].paths[j], len) == 0 &&
+                (wlcache[i].paths[j][len] == '/' ||
+                wlcache[i].paths[j][len] == '\0')) {
 
-                FORMAT_PATH(newpath, newpf, &wlcache[i]->paths[j][len]);
-                wlcache[i]->paths[j] = strdup(newpath);
+                FORMAT_PATH(newpath, newpf, &wlcache[i].paths[j][len]);
+                wlcache[i].paths[j] = strdup(newpath);
 #if DEBUG
-                printf("    wd %d [cache slot %d] ==> %s\n", wlcache[i]->wd[j], i, newpath);
+                printf("    wd %d [cache slot %d] ==> %s\n", wlcache[i].wd[j], i, newpath);
                 fflush(stdout);
 #endif
             }
@@ -452,8 +452,7 @@ int remove_subtree(const struct arguswatch *watch, char *path) {
     // The argument we receive might be a pointer to a path string that is
     // actually stored in the cache. If we remove that path part way through
     // scanning the whole cache then chaos ensues; so, create a temporary copy.
-    char *pn;
-    strcpy(pn, path);
+    char *pn = strdup(path);
 
 #if DEBUG
     printf("removing subtree: %s\n", path);
@@ -461,25 +460,25 @@ int remove_subtree(const struct arguswatch *watch, char *path) {
 #endif
 
     for (i = 0; i < wlcachec; ++i) {
-        if (wlcache[i]->pid != watch->pid ||
-            wlcache[i]->sid != watch->sid) {
+        if (wlcache[i].pid != watch->pid ||
+            wlcache[i].sid != watch->sid) {
             continue;
         }
-        if (wlcache[i]->pathc) {
-            for (j = 0; j < wlcache[i]->pathc; ++j) {
-                if (strncmp(pn, wlcache[i]->paths[j], len) == 0 &&
-                    (wlcache[i]->paths[j][len] == '/' ||
-                    wlcache[i]->paths[j][len] == '\0')) {
+        if (wlcache[i].pathc) {
+            for (j = 0; j < wlcache[i].pathc; ++j) {
+                if (strncmp(pn, wlcache[i].paths[j], len) == 0 &&
+                    (wlcache[i].paths[j][len] == '/' ||
+                    wlcache[i].paths[j][len] == '\0')) {
 #if DEBUG
                     printf("  removing watch: wd = %d (%s)\n",
-                        wlcache[i]->wd[j], wlcache[i]->paths[j]);
+                        wlcache[i].wd[j], wlcache[i].paths[j]);
                     fflush(stdout);
 #endif
 
-                    if (inotify_rm_watch(watch->fd, wlcache[i]->wd[j]) == EOF) {
+                    if (inotify_rm_watch(watch->fd, wlcache[i].wd[j]) == EOF) {
 #if DEBUG
-                        printf("    inotify_rm_watch wd = %d (%s): %s\n", wlcache[i]->wd[j],
-                            wlcache[i]->paths[j], strerror(errno));
+                        printf("    inotify_rm_watch wd = %d (%s): %s\n", wlcache[i].wd[j],
+                            wlcache[i].paths[j], strerror(errno));
                         fflush(stdout);
 #endif
 

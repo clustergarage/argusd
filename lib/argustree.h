@@ -27,7 +27,7 @@
 
 #include "argusutil.h"
 
-void copy_root_paths(struct arguswatch *watch);
+void validate_root_paths(struct arguswatch *watch);
 char **find_root_path(const struct arguswatch *watch, const char *path);
 char **find_path(const struct arguswatch *watch, const char *path);
 struct stat *find_root_stat(const struct arguswatch *watch, const char *path);

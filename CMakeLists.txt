@@ -210,7 +210,7 @@ add_executable(argusd
   ${ARGUS_PROTO_SRCS}
   ${ARGUS_GRPC_SRCS}
 )
-add_dependencies(argusd argusnotify libcontainer grpc glog)
+add_dependencies(argusd argusnotify libcontainer grpc glog fmt)
 target_include_directories(argusd
   # Include headers from directories like <[lib|argus-proto]/file.h>.
   PRIVATE ${CMAKE_SOURCE_DIR})

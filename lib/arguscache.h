@@ -33,7 +33,7 @@
 #define ALLOC_INC 128
 #endif
 
-void free_cache(struct arguswatch *cache);
+void clear_watch(struct arguswatch *cache);
 int find_cached_slot(int pid, int sid);
 void check_cache_consistency(struct arguswatch *watch);
 void remove_item_from_cache(struct arguswatch *watch, int index);
