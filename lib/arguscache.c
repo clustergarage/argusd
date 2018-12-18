@@ -122,8 +122,6 @@ out_increaseloop:
  */
 void remove_item_from_cache(struct arguswatch **watch, int const index) {
     int i;
-    printf(" ####### %s => %d\n", __func__, index);
-    fflush(stdout);
     for (i = index; i < (*watch)->pathc - 1; ++i) {
         (*watch)->wd[i] = (*watch)->wd[i + 1];
         (*watch)->paths[i] = (*watch)->paths[i + 1];
@@ -186,12 +184,19 @@ void mark_cache_slot_empty(const int slot) {
         .pid = -1,
         .sid = -1,
         .slot = -1,
+        .node_name = '\0',
+        .pod_name = '\0',
         .fd = EOF,
         .rootpathc = 0,
         .pathc = 0,
         .event_mask = (uint32_t)-1,
         .only_dir = false,
-        .recursive = false
+        .recursive = false,
+        .max_depth = 0,
+        .follow_move = false,
+        .processevtfd = EOF,
+        .tags = '\0',
+        .log_format = '\0'
     };
 }
 

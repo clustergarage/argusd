@@ -104,18 +104,10 @@ static int reinitialize(struct arguswatch **watch) {
     }
 #endif
 
-    printf(" ===== %s :: DUMP_CACHE ===== \n", __func__);
-    DUMP_CACHE(*watch);
-    fflush(stdout);
-
     // Check cache consistency right away, in case there are multiple
     // containers in a single pod that don't have a path on the filesystem that
     // we specified to watch.
     check_cache_consistency(watch);
-
-    printf(" ===== %s :: DUMP_CACHE [check_cache_consistency] ===== \n", __func__);
-    DUMP_CACHE(*watch);
-    fflush(stdout);
 
     return fd;
 }
@@ -416,52 +408,22 @@ static size_t process_next_inotify_event(struct arguswatch **watch, const struct
         fflush(stdout);
 #endif
 
-        //======================
-
-        char proc_path[PATH_MAX], new_path[PATH_MAX], pidc[8];
-        snprintf(proc_path, sizeof(proc_path), "/proc/%d/root/.", (*watch)->pid);
-        snprintf(pidc, sizeof(pidc), "%d", (*watch)->pid);
-        struct stat *root_stat = find_root_stat(*watch, path);
-
-        int traverse_stuff(const char *path, const struct stat *sb, int tflag, struct FTW *ftwbuf) {
-            if (root_stat->st_ino == sb->st_ino) {
-                snprintf(new_path, sizeof(new_path), "/proc/%d/root%s", (*watch)->pid,
-                    path + (strlen(pidc) + 13));
-                return FTW_STOP;
+        if ((*watch)->follow_move) {
+            replace_moved_root_path(watch, path);
+            //reinitialize(watch);
+        } else {
+            remove_root_path(watch, path);
+            if (remove_subtree(watch, path) == -1) {
+                // Cache reached an inconsistent state.
+                slot = find_watch_checked(*watch, event->wd);
+                if (slot > -1) {
+                    reinitialize(watch);
+                }
+                // Discard all remaining events in current `read` buffer.
+                return IN_BUFFER_SIZE;
             }
-            return FTW_CONTINUE;
         }
-        if (nftw(proc_path, traverse_stuff, 20, FTW_ACTIONRETVAL | FTW_PHYS) == EOF) {
-#if DEBUG
-            printf("nftw: %s: %s (directory probably deleted before we could watch)\n",
-                path, strerror(errno));
-            fflush(stdout);
-#endif
-        }
-
-        //======================
-
-#if 0
-        remove_root_path(watch, path);
-
-        if (remove_subtree(watch, path) == -1) {
-            // Cache reached an inconsistent state.
-            slot = find_watch_checked(watch, event->wd);
-            if (slot > -1) {
-                reinitialize(watch);
-            }
-            // Discard all remaining events in current `read` buffer.
-            return IN_BUFFER_SIZE;
-        }
-#endif
-
-        replace_root_path(watch, path, new_path);
-        reinitialize(watch);
     }
-
-    printf(" ===== %s :: DUMP_CACHE ===== \n", __func__);
-    DUMP_CACHE(*watch);
-    fflush(stdout);
 
     //check_cache_consistency(watch);
 
@@ -622,6 +584,7 @@ static void process_inotify_events(struct arguswatch **watch, void (*logfn)(stru
  * @param onlydir
  * @param recursive
  * @param maxdepth
+ * @param followmove
  * @param processevtfd
  * @param tags
  * @param logformat
@@ -629,8 +592,8 @@ static void process_inotify_events(struct arguswatch **watch, void (*logfn)(stru
  * @return
  */
 int start_inotify_watcher(char *name, const int pid, const int sid, char *nodename, char *podname, unsigned int pathc, char *paths[],
-    unsigned int ignorec, char *ignores[], uint32_t mask, bool onlydir, bool recursive, int maxdepth, int processevtfd,
-    char *tags, char *logformat, void (*logfn)(struct arguswatch_event *)) {
+    unsigned int ignorec, char *ignores[], uint32_t mask, bool onlydir, bool recursive, int maxdepth, bool followmove,
+    int processevtfd, char *tags, char *logformat, void (*logfn)(struct arguswatch_event *)) {
 
     int fd, pollc;
     nfds_t nfds;
@@ -649,35 +612,29 @@ int start_inotify_watcher(char *name, const int pid, const int sid, char *nodena
         *watch = *wlcache[slot];
     } else {
         // Create new arguswatch placeholder struct, to be filled later.
-        watch = calloc(1, sizeof(struct arguswatch));
-        if (watch == NULL) {
-#if DEBUG
-            perror("calloc");
-#endif
-        }
-        watch->name = name;
-        watch->pid = pid;
-        watch->sid = sid;
-        watch->node_name = nodename;
-        watch->pod_name = podname;
-        watch->slot = -1;
-        watch->fd = EOF;
-        watch->rootpathc = pathc;
-        watch->rootpaths = paths;
-        watch->pathc = 0;
-        watch->ignorec = ignorec;
-        watch->ignores = ignores;
-        watch->event_mask = mask;
-        watch->only_dir = onlydir;
-        watch->recursive = recursive;
-        watch->max_depth = maxdepth;
-        watch->processevtfd = processevtfd;
-        watch->tags = tags;
-        watch->log_format = logformat;
+        watch = &(struct arguswatch){
+            .name = name,
+            .pid = pid,
+            .sid = sid,
+            .slot = -1,
+            .node_name = nodename,
+            .pod_name = podname,
+            .fd = EOF,
+            .rootpathc = pathc,
+            .rootpaths = paths,
+            .pathc = 0,
+            .ignorec = ignorec,
+            .ignores = ignores,
+            .event_mask = mask,
+            .only_dir = onlydir,
+            .recursive = recursive,
+            .max_depth = maxdepth,
+            .follow_move = followmove,
+            .processevtfd = processevtfd,
+            .tags = tags,
+            .log_format = logformat
+        };
     }
-    printf(" ===== %s :: DUMP_CACHE ===== \n", __func__);
-    DUMP_CACHE(watch);
-    fflush(stdout);
 
     // Validate root paths with `stat` and for duplicates.
     validate_root_paths(watch);

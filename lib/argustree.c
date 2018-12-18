@@ -101,8 +101,6 @@ void validate_root_paths(struct arguswatch *watch) {
             }
         }
     }
-
-    watch->ignored_rootpathc = 0;
 }
 
 /**
@@ -124,6 +122,14 @@ char **find_root_path(const struct arguswatch *watch, const char *path) {
     return NULL;
 }
 
+/**
+ * Return the address of the element in `rootstat` that points to a stat struct
+ * matching `path`, or NULL if there is no match.
+ *
+ * @param watch
+ * @param path
+ * @return
+ */
 struct stat *find_root_stat(const struct arguswatch *watch, const char *path) {
     int i;
     for (i = 0; i < watch->rootpathc; ++i) {
@@ -166,10 +172,35 @@ void remove_root_path(struct arguswatch **watch, const char *path) {
     }
 }
 
-void replace_root_path(struct arguswatch **watch, const char *path, const char *newpath) {
-    char **p = find_root_path(*watch, path);
+void replace_moved_root_path(struct arguswatch **watch, const char *path) {
+    char **p = NULL;
+    char procpath[PATH_MAX], foundpath[PATH_MAX], pidc[8];
+    int len;
+    struct stat *rootstat;
+
+    snprintf(procpath, sizeof(procpath), "/proc/%d/root/.", (*watch)->pid);
+    snprintf(pidc, sizeof(pidc), "%d", (*watch)->pid);
+    rootstat = find_root_stat(*watch, path);
+
+    int traverse_root(const char *path, const struct stat *sb, int tflag, struct FTW *ftwbuf) {
+        if (rootstat->st_ino == sb->st_ino) {
+            snprintf(foundpath, sizeof(foundpath), "/proc/%d/root%s", (*watch)->pid,
+                path + (strlen(pidc) + 13));
+            return FTW_STOP;
+        }
+        return FTW_CONTINUE;
+    }
+    if (nftw(procpath, traverse_root, 20, FTW_ACTIONRETVAL | FTW_PHYS) == EOF) {
 #if DEBUG
-    printf("%s: %s -> %s\n", __func__, path, newpath);
+        printf("nftw: %s: %s (directory probably deleted before we could watch)\n",
+            path, strerror(errno));
+        fflush(stdout);
+#endif
+    }
+
+    p = find_root_path(*watch, path);
+#if DEBUG
+    printf("%s: %s -> %s\n", __func__, path, foundpath);
     fflush(stdout);
 #endif
     if (p == NULL) {
@@ -179,7 +210,14 @@ void replace_root_path(struct arguswatch **watch, const char *path, const char *
 #endif
         return;
     }
-    *p = (char *)newpath;
+
+    *p = realloc(*p, sizeof(foundpath) + 1);
+    if (*p == NULL) {
+#if DEBUG
+        perror("realloc");
+#endif
+    }
+    *p = strdup(foundpath);
 }
 
 /**
@@ -277,9 +315,6 @@ int watch_path(struct arguswatch **watch, const char *path) {
     }
 #endif
 
-    printf(" ~*~*~*~*~ %s :: pathc = %d; ptr = %p\n", __func__, (*watch)->pathc, (void *)&watch);
-    fflush(stdout);
-
     (*watch)->wd = realloc((*watch)->wd, ((*watch)->pathc + 1) * sizeof(int));
     if ((*watch)->wd == NULL) {
 #if DEBUG
@@ -298,10 +333,6 @@ int watch_path(struct arguswatch **watch, const char *path) {
     (*watch)->paths[(*watch)->pathc] = strdup(path);
 
     ++(*watch)->pathc;
-
-    printf(" ===== %s :: DUMP_CACHE ===== \n", __func__);
-    DUMP_CACHE(*watch);
-    fflush(stdout);
 
     return 0;
 }
@@ -329,7 +360,6 @@ int watch_path_recursive(struct arguswatch **watch, const char *path) {
      * @return
      */
     int traverse_tree(const char *path, const struct stat *sb, int tflag, struct FTW *ftwbuf) {
-        printf(" ### %s ### path = %s; ptr = %p; pathc = %d\n", __func__, path, (void *)&watch, (*watch)->pathc);
         int i;
         if ((*watch)->only_dir &&
             !S_ISDIR(sb->st_mode)) {
@@ -366,7 +396,6 @@ int watch_path_recursive(struct arguswatch **watch, const char *path) {
         fflush(stdout);
 #endif
     }
-    printf(" ### %s ### pathc = %d\n", __func__, (*watch)->pathc);
     return (*watch)->pathc;
 }
 

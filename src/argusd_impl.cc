@@ -350,7 +350,7 @@ void ArgusdImpl::createInotifyWatcher(const std::string watcherName, const std::
     eventProcessfds->Add(processfd);
 
     std::packaged_task<int(char *, int, int, char *, char *, unsigned int, char **, unsigned int, char **, uint32_t,
-        bool, bool, int, int, char *, char *, void(struct arguswatch_event *))> task(start_inotify_watcher);
+        bool, bool, int, bool, int, char *, char *, void(struct arguswatch_event *))> task(start_inotify_watcher);
     std::shared_future<int> result(task.get_future());
     std::thread taskThread(std::move(task),
         convertStringToCString(watcherName),
@@ -362,6 +362,7 @@ void ArgusdImpl::createInotifyWatcher(const std::string watcherName, const std::
         getEventMaskFromSubject(subject),
         subject->onlydir(),
         subject->recursive(), subject->maxdepth(),
+        subject->followmove(),
         processfd,
         convertStringToCString(getTagListFromSubject(subject)),
         convertStringToCString(logFormat),

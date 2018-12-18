@@ -45,21 +45,29 @@
 
 #define DUMP_CACHE(watch) do {                                               \
     printf("  $$$$ watch = %p:\n", (void *)(watch));                         \
-    printf("    $$   fd = %d\n", (watch)->fd);                               \
+    printf("    $$   pid = %d; sid = %d\n", (watch)->pid, (watch)->sid);     \
+    printf("    $$   slot = %d\n", (watch)->slot);                           \
+    printf("    $$   fd = %d\n", (watch)->fd),                               \
     printf("    $$   rootpathc = %d\n", (watch)->rootpathc);                 \
-    fflush(stdout);                                                          \
     for (int i = 0; i < (watch)->rootpathc; ++i) {                           \
         printf("     $     rootpaths[%d] = %s\n", i, (watch)->rootpaths[i]); \
-        fflush(stdout);                                                      \
     }                                                                        \
     printf("    $$   pathc = %d\n", (watch)->pathc);                         \
     for (int i = 0; i < (watch)->pathc; ++i) {                               \
         printf("     $     wd[%d] = %d\n", i, (watch)->wd[i]);               \
         printf("     $     paths[%d] = %s\n", i, (watch)->paths[i]);         \
-        fflush(stdout);                                                      \
+    }                                                                        \
+    printf("    $$   ignorec = %d\n", (watch)->ignorec);                     \
+    for (int i = 0; i < (watch)->ignorec; ++i) {                             \
+        printf("     $     ignores[%d] = %s\n", i, (watch)->ignores[i]);     \
     }                                                                        \
     printf("    $$   event_mask = %d\n", (watch)->event_mask);               \
+    printf("    $$   only_dir = %d\n", (watch)->only_dir);                   \
     printf("    $$   recursive = %d\n", (watch)->recursive);                 \
+    if ((watch)->recursive) {                                                \
+        printf("    $$     max_depth = %d\n", (watch)->max_depth);           \
+    }                                                                        \
+    printf("    $$   follow_move = %d\n", (watch)->follow_move);             \
     fflush(stdout);                                                          \
 } while(0)
 
@@ -77,11 +85,11 @@ struct arguswatch {
     char **paths;                     // Cached path name(s), including recursive traversal.
     unsigned int ignorec;             // Ignore path pattern count.
     char **ignores;                   // Ignore path patterns.
-    unsigned int ignored_rootpathc;   // Ignored rootpath count.
     uint32_t event_mask;              // Event mask for `inotify`.
     bool only_dir;                    // Flag to watch only directories.
     bool recursive;                   // Flag to watch recursively.
     int max_depth;                    // Max `nftw` depth to recurse through.
+    bool follow_move;                 // Flag to follow move events and watch updated path.
     int processevtfd;                 // Anonymous pipe to send watch kill signal.
     const char *tags;                 // Custom tags for printing ArgusWatcher event.
     const char *log_format;           // Custom logging format for printing ArgusWatcher event.

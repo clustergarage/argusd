@@ -29,10 +29,9 @@
 
 void validate_root_paths(struct arguswatch *watch);
 char **find_root_path(const struct arguswatch *watch, const char *path);
-char **find_path(const struct arguswatch *watch, const char *path);
 struct stat *find_root_stat(const struct arguswatch *watch, const char *path);
 void remove_root_path(struct arguswatch **watch, const char *path);
-void replace_root_path(struct arguswatch **watch, const char *path, const char *newpath);
+void replace_moved_root_path(struct arguswatch **watch, const char *path);
 bool should_ignore_path(struct arguswatch *watch, const char *path);
 int watch_path(struct arguswatch **watch, const char *path);
 int watch_path_recursive(struct arguswatch **watch, const char *path);
