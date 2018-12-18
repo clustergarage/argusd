@@ -142,8 +142,8 @@ struct stat *find_root_stat(const struct arguswatch *watch, const char *path) {
  * @param watch
  * @param path
  */
-void remove_root_path(struct arguswatch *watch, const char *path) {
-    char **p = find_root_path(watch, path);
+void remove_root_path(struct arguswatch **watch, const char *path) {
+    char **p = find_root_path(*watch, path);
 #if DEBUG
     printf("%s: %s\n", __func__, path);
     fflush(stdout);
@@ -157,8 +157,8 @@ void remove_root_path(struct arguswatch *watch, const char *path) {
     }
     *p = NULL;
 
-    --watch->rootpathc;
-    if (watch->rootpathc == 0) {
+    --(*watch)->rootpathc;
+    if ((*watch)->rootpathc == 0) {
 #if DEBUG
         printf("no more root paths left to monitor\n");
         fflush(stdout);
@@ -166,8 +166,8 @@ void remove_root_path(struct arguswatch *watch, const char *path) {
     }
 }
 
-void replace_root_path(struct arguswatch *watch, const char *path, const char *newpath) {
-    char **p = find_root_path(watch, path);
+void replace_root_path(struct arguswatch **watch, const char *path, const char *newpath) {
+    char **p = find_root_path(*watch, path);
 #if DEBUG
     printf("%s: %s -> %s\n", __func__, path, newpath);
     fflush(stdout);
@@ -232,27 +232,27 @@ bool should_ignore_path(struct arguswatch *watch, const char *path) {
  * @param path
  * @return
  */
-int watch_path(struct arguswatch *watch, const char *path) {
+int watch_path(struct arguswatch **watch, const char *path) {
     int wd;
 
     // Dont add non-directories unless directly specified by `rootpaths` and
     // `only_dir` flag is false.
-    if (should_ignore_path(watch, path)) {
+    if (should_ignore_path(*watch, path)) {
         return 0;
     }
 
     // We need to watch certain events at all times for keeping a consistent
     // view of the filesystem tree.
     uint32_t flags = IN_CREATE | IN_MOVED_FROM | IN_MOVED_TO | IN_DELETE_SELF;
-    if (watch->only_dir) {
+    if ((*watch)->only_dir) {
         flags |= IN_ONLYDIR;
     }
-    if (find_root_path(watch, path) != NULL) {
+    if (find_root_path(*watch, path) != NULL) {
         flags |= IN_MOVE_SELF;
     }
 
     // Make directories for events.
-    wd = inotify_add_watch(watch->fd, path, watch->event_mask | flags);
+    wd = inotify_add_watch((*watch)->fd, path, (*watch)->event_mask | flags);
     if (wd == EOF) {
         // By the time we come to create a watch, the directory might already
         // have been deleted or renamed, in which case we'll get an ENOENT
@@ -270,32 +270,38 @@ int watch_path(struct arguswatch *watch, const char *path) {
     }
 
 #if DEBUG
-    if (find_watch(watch, wd) > -1) {
+    if (find_watch(*watch, wd) > -1) {
         // This watch descriptor is already in the cache.
         printf("wd: %d already in cache (%s)\n", wd, path);
         fflush(stdout);
     }
 #endif
 
-    watch->wd = realloc(watch->wd, (watch->pathc + 1) * sizeof(int));
-    if (watch->wd == NULL) {
+    printf(" ~*~*~*~*~ %s :: pathc = %d; ptr = %p\n", __func__, (*watch)->pathc, (void *)&watch);
+    fflush(stdout);
+
+    (*watch)->wd = realloc((*watch)->wd, ((*watch)->pathc + 1) * sizeof(int));
+    if ((*watch)->wd == NULL) {
 #if DEBUG
         perror("realloc");
 #endif
         return -1;
     }
-    watch->wd[watch->pathc] = wd;
+    (*watch)->wd[(*watch)->pathc] = wd;
 
-    watch->paths = realloc(watch->paths, (watch->pathc + 1) * sizeof(char *));
-    if (watch->paths == NULL) {
+    (*watch)->paths = realloc((*watch)->paths, ((*watch)->pathc + 1) * sizeof(char *));
+    if ((*watch)->paths == NULL) {
 #if DEBUG
         perror("realloc");
 #endif
-        return -1;
     }
-    watch->paths[watch->pathc] = strdup(path);
+    (*watch)->paths[(*watch)->pathc] = strdup(path);
 
-    ++watch->pathc;
+    ++(*watch)->pathc;
+
+    printf(" ===== %s :: DUMP_CACHE ===== \n", __func__);
+    DUMP_CACHE(*watch);
+    fflush(stdout);
 
     return 0;
 }
@@ -309,7 +315,7 @@ int watch_path(struct arguswatch *watch, const char *path) {
  * @param path
  * @return
  */
-int watch_path_recursive(struct arguswatch *watch, const char *path) {
+int watch_path_recursive(struct arguswatch **watch, const char *path) {
     /**
      * Function called by `nftw` to traverse a directory tree that adds a watch
      * for each directory in the tree. Each successful call to this function
@@ -323,21 +329,22 @@ int watch_path_recursive(struct arguswatch *watch, const char *path) {
      * @return
      */
     int traverse_tree(const char *path, const struct stat *sb, int tflag, struct FTW *ftwbuf) {
+        printf(" ### %s ### path = %s; ptr = %p; pathc = %d\n", __func__, path, (void *)&watch, (*watch)->pathc);
         int i;
-        if (watch->only_dir &&
+        if ((*watch)->only_dir &&
             !S_ISDIR(sb->st_mode)) {
             // Ignore nondirectory files.
             return FTW_CONTINUE;
         }
         // Stop recursing subtree if path in ignores list.
-        for (i = 0; i < watch->ignorec; ++i) {
-            if (strcmp(&path[ftwbuf->base], watch->ignores[i]) == 0) {
+        for (i = 0; i < (*watch)->ignorec; ++i) {
+            if (strcmp(&path[ftwbuf->base], (*watch)->ignores[i]) == 0) {
                 return FTW_SKIP_SUBTREE;
             }
         }
         // Stop recursing siblings if reached max depth.
-        if (watch->max_depth &&
-            ftwbuf->level + 1 > watch->max_depth) {
+        if ((*watch)->max_depth &&
+            ftwbuf->level + 1 > (*watch)->max_depth) {
             return FTW_SKIP_SIBLINGS;
         }
 
@@ -359,11 +366,12 @@ int watch_path_recursive(struct arguswatch *watch, const char *path) {
         fflush(stdout);
 #endif
     }
-    return watch->pathc;
+    printf(" ### %s ### pathc = %d\n", __func__, (*watch)->pathc);
+    return (*watch)->pathc;
 }
 
-void watch_subtree_path(struct arguswatch *watch, const char *path) {
-    if (watch->recursive) {
+void watch_subtree_path(struct arguswatch **watch, const char *path) {
+    if ((*watch)->recursive) {
         watch_path_recursive(watch, path);
     } else {
         watch_path(watch, path);
@@ -376,13 +384,13 @@ void watch_subtree_path(struct arguswatch *watch, const char *path) {
  *
  * @param watch
  */
-void watch_subtree(struct arguswatch *watch) {
+void watch_subtree(struct arguswatch **watch) {
     int i;
-    for (i = 0; i < watch->rootpathc; ++i) {
-        watch_subtree_path(watch, watch->rootpaths[i]);
+    for (i = 0; i < (*watch)->rootpathc; ++i) {
+        watch_subtree_path(watch, (*watch)->rootpaths[i]);
 #if DEBUG
         printf("  watch_subtree: %s: %d entries added\n",
-            watch->rootpaths[i], watch->pathc);
+            (*watch)->rootpaths[i], (*watch)->pathc);
         fflush(stdout);
 #endif
     }
@@ -399,12 +407,12 @@ void watch_subtree(struct arguswatch *watch) {
  * @param newpathpf
  * @param newname
  */
-void rewrite_cached_paths(const struct arguswatch *watch, const char *oldpathpf, const char *oldname,
+void rewrite_cached_paths(struct arguswatch **watch, const char *oldpathpf, const char *oldname,
     const char *newpathpf, const char *newname) {
 
     char fullpath[PATH_MAX], newpf[PATH_MAX], newpath[PATH_MAX + 1];
     size_t len;
-    int i, j;
+    int i;
 
     FORMAT_PATH(fullpath, oldpathpf, oldname);
     FORMAT_PATH(newpf, newpathpf, newname);
@@ -415,23 +423,17 @@ void rewrite_cached_paths(const struct arguswatch *watch, const char *oldpathpf,
     fflush(stdout);
 #endif
 
-    for (i = 0; i < wlcachec; ++i) {
-        if (wlcache[i].pid != watch->pid ||
-            wlcache[i].sid != watch->sid) {
-            continue;
-        }
-        for (j = 0; j < wlcache[i].pathc; ++j) {
-            if (strncmp(fullpath, wlcache[i].paths[j], len) == 0 &&
-                (wlcache[i].paths[j][len] == '/' ||
-                wlcache[i].paths[j][len] == '\0')) {
+    for (i = 0; i < (*watch)->pathc; ++i) {
+        if (strncmp(fullpath, (*watch)->paths[i], len) == 0 &&
+            ((*watch)->paths[i][len] == '/' ||
+            (*watch)->paths[i][len] == '\0')) {
 
-                FORMAT_PATH(newpath, newpf, &wlcache[i].paths[j][len]);
-                wlcache[i].paths[j] = strdup(newpath);
+            FORMAT_PATH(newpath, newpf, &(*watch)->paths[i][len]);
+            (*watch)->paths[i] = strdup(newpath);
 #if DEBUG
-                printf("    wd %d [cache slot %d] ==> %s\n", wlcache[i].wd[j], i, newpath);
-                fflush(stdout);
+            printf("    wd %d => %s\n", (*watch)->wd[i], newpath);
+            fflush(stdout);
 #endif
-            }
         }
     }
 }
@@ -445,10 +447,9 @@ void rewrite_cached_paths(const struct arguswatch *watch, const char *oldpathpf,
  * @param path
  * @return
  */
-int remove_subtree(const struct arguswatch *watch, char *path) {
+int remove_subtree(struct arguswatch **watch, char *path) {
     size_t len = strlen(path);
-    int i, j;
-    int cnt = 0;
+    int i, cnt = 0;
     // The argument we receive might be a pointer to a path string that is
     // actually stored in the cache. If we remove that path part way through
     // scanning the whole cache then chaos ensues; so, create a temporary copy.
@@ -459,40 +460,32 @@ int remove_subtree(const struct arguswatch *watch, char *path) {
     fflush(stdout);
 #endif
 
-    for (i = 0; i < wlcachec; ++i) {
-        if (wlcache[i].pid != watch->pid ||
-            wlcache[i].sid != watch->sid) {
-            continue;
-        }
-        if (wlcache[i].pathc) {
-            for (j = 0; j < wlcache[i].pathc; ++j) {
-                if (strncmp(pn, wlcache[i].paths[j], len) == 0 &&
-                    (wlcache[i].paths[j][len] == '/' ||
-                    wlcache[i].paths[j][len] == '\0')) {
+    for (i = 0; i < (*watch)->pathc; ++i) {
+        if (strncmp(pn, (*watch)->paths[i], len) == 0 &&
+            ((*watch)->paths[i][len] == '/' ||
+            (*watch)->paths[i][len] == '\0')) {
 #if DEBUG
-                    printf("  removing watch: wd = %d (%s)\n",
-                        wlcache[i].wd[j], wlcache[i].paths[j]);
-                    fflush(stdout);
+            printf("  removing watch: wd = %d (%s)\n",
+                (*watch)->wd[i], (*watch)->paths[i]);
+            fflush(stdout);
 #endif
 
-                    if (inotify_rm_watch(watch->fd, wlcache[i].wd[j]) == EOF) {
+            if (inotify_rm_watch((*watch)->fd, (*watch)->wd[i]) == EOF) {
 #if DEBUG
-                        printf("    inotify_rm_watch wd = %d (%s): %s\n", wlcache[i].wd[j],
-                            wlcache[i].paths[j], strerror(errno));
-                        fflush(stdout);
+                printf("    inotify_rm_watch wd = %d (%s): %s\n", (*watch)->wd[i],
+                    (*watch)->paths[i], strerror(errno));
+                fflush(stdout);
 #endif
 
-                        // When we have multiple renamers, sometimes
-                        // `inotify_rm_watch` fails. In this case, force a cache
-                        // rebuild by returning -1.
-                        cnt = -1;
-                        break;
-                    }
-
-                    mark_cache_slot_empty(i);
-                    ++cnt;
-                }
+                // When we have multiple renamers, sometimes
+                // `inotify_rm_watch` fails. In this case, force a cache
+                // rebuild by returning -1.
+                cnt = -1;
+                break;
             }
+
+            mark_cache_slot_empty(i);
+            ++cnt;
         }
     }
 

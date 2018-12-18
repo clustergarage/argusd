@@ -87,7 +87,7 @@ struct arguswatch {
     const char *log_format;           // Custom logging format for printing ArgusWatcher event.
 };
 
-extern struct arguswatch *wlcache; // Array of cached watches.
+extern struct arguswatch **wlcache; // Array of cached watches.
 extern int wlcachec;
 
 #endif

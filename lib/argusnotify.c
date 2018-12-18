@@ -50,12 +50,12 @@
  * @param watch
  * @return
  */
-static int reinitialize(struct arguswatch *watch) {
+static int reinitialize(struct arguswatch **watch) {
     int fd, slot;
-    bool rebuild = watch->fd != EOF;
+    bool rebuild = (*watch)->fd != EOF;
 
     if (rebuild) {
-        close(watch->fd);
+        close((*watch)->fd);
     } else {
 #if DEBUG
         printf("initializing cache\n");
@@ -70,7 +70,7 @@ static int reinitialize(struct arguswatch *watch) {
 #endif
         return -1;
     }
-    watch->fd = fd;
+    (*watch)->fd = fd;
 #if DEBUG
     printf("  new fd = %d\n", fd);
     fflush(stdout);
@@ -81,7 +81,7 @@ static int reinitialize(struct arguswatch *watch) {
     // Begin traversing tree, or non-recursive directories.
     watch_subtree(watch);
 
-    slot = find_cached_slot(watch->pid, watch->sid);
+    slot = find_cached_slot((*watch)->pid, (*watch)->sid);
     if (slot == -1) {
         // Cache information about the watch.
         add_watch_to_cache(watch);
@@ -90,12 +90,12 @@ static int reinitialize(struct arguswatch *watch) {
 #if DEBUG
     int i, cnt;
     for (i = 0, cnt = 0; i < wlcachec; ++i) {
-        if (wlcache[i].pid != watch->pid ||
-            wlcache[i].sid != watch->sid) {
+        if (wlcache[i]->pid != (*watch)->pid ||
+            wlcache[i]->sid != (*watch)->sid) {
             continue;
         }
-        if (wlcache[i].pathc) {
-            cnt += wlcache[i].pathc;
+        if (wlcache[i]->pathc) {
+            cnt += wlcache[i]->pathc;
         }
     }
     if (rebuild) {
@@ -104,10 +104,18 @@ static int reinitialize(struct arguswatch *watch) {
     }
 #endif
 
+    printf(" ===== %s :: DUMP_CACHE ===== \n", __func__);
+    DUMP_CACHE(*watch);
+    fflush(stdout);
+
     // Check cache consistency right away, in case there are multiple
     // containers in a single pod that don't have a path on the filesystem that
     // we specified to watch.
     check_cache_consistency(watch);
+
+    printf(" ===== %s :: DUMP_CACHE [check_cache_consistency] ===== \n", __func__);
+    DUMP_CACHE(*watch);
+    fflush(stdout);
 
     return fd;
 }
@@ -125,7 +133,7 @@ static int reinitialize(struct arguswatch *watch) {
  * @param logfn
  * @return
  */
-static size_t process_next_inotify_event(struct arguswatch *watch, const struct inotify_event *event, ssize_t len,
+static size_t process_next_inotify_event(struct arguswatch **watch, const struct inotify_event *event, ssize_t len,
     bool first, void (*logfn)(struct arguswatch_event *)) {
 
     size_t evtlen;
@@ -134,20 +142,20 @@ static size_t process_next_inotify_event(struct arguswatch *watch, const struct 
     int slot = -1, wdslot;
 
     if (event->wd != EOF) {
-        path = wd_to_path_name(watch, event->wd);
+        path = wd_to_path_name(*watch, event->wd);
 
         // =================== start
 
-        slot = find_watch_checked(watch, event->wd);
+        slot = find_watch_checked(*watch, event->wd);
         if (slot == -1 ||
             // Only continue with the events we care about.
-            !(event->mask & watch->event_mask)) {
+            !(event->mask & (*watch)->event_mask)) {
             // Discard all remaining events in current `read` buffer.
             return IN_BUFFER_SIZE;
         }
 
         struct arguswatch_event awevent = {
-            .watch = watch,
+            .watch = *watch,
             .event_mask = event->mask,
             .path_name = path,                          // Name of the watched directory.
             .file_name = event->len ? event->name : "", // Name of the file.
@@ -170,10 +178,10 @@ static size_t process_next_inotify_event(struct arguswatch *watch, const struct 
             // will come after an event that has already removed the
             // corresponding cache entry. Cache consistency check. See the
             // discussion of "intra-tree" `rename` events.
-            slot = find_watch_checked(watch, event->wd);
+            slot = find_watch_checked(*watch, event->wd);
             if (slot == -1) {
                 // Reinitialize the `inotify` watch.
-                watch->fd = EOF;
+                (*watch)->fd = EOF;
                 // Cache reached an inconsistent state.
                 reinitialize(watch);
                 // Discard all remaining events in current `read` buffer.
@@ -221,16 +229,15 @@ static size_t process_next_inotify_event(struct arguswatch *watch, const struct 
          *      a second cache for the grandchild would leave the cache in a
          *      confused state).
          */
-        if (path_name_to_cache_slot(watch, fullpath) == -1) {
-            wdslot = wd_to_cache_slot(watch, event->wd);
+        if (path_name_to_cache_slot(*watch, fullpath) == -1) {
+            wdslot = wd_to_cache_slot(*watch, event->wd);
             if (wdslot > -1 &&
                 // Only do this if watching recursively.
-                watch->recursive) {
-                watch->pathc = 0;
+                (*watch)->recursive) {
+                (*watch)->pathc = 0;
                 watch_subtree(watch);
                 // @TODO: Verify that this works.
-                //memcpy(&wlcache[watch->slot], watch, sizeof(struct arguswatch));
-                wlcache[watch->slot] = *watch;
+                wlcache[(*watch)->slot] = *watch;
             }
         }
     } else if (event->mask & IN_DELETE_SELF) {
@@ -240,11 +247,9 @@ static size_t process_next_inotify_event(struct arguswatch *watch, const struct 
         printf("clearing watchlist item %d (%s)\n", event->wd, path);
         fflush(stdout);
 #endif
-        if (find_root_path(watch, path) != NULL) {
+        if (find_root_path(*watch, path) != NULL) {
             remove_root_path(watch, path);
-        }
-        if (slot > -1) {
-            mark_cache_slot_empty(slot);
+            check_cache_consistency(watch);
         }
         // ... no need to remove the watch, that happens automatically.
     } else if ((event->mask & (IN_MOVED_FROM | IN_ISDIR)) == (IN_MOVED_FROM | IN_ISDIR)) {
@@ -331,10 +336,10 @@ static size_t process_next_inotify_event(struct arguswatch *watch, const struct 
 
             // We have a `rename` event. We need to fix up the cached pathnames
             // for the corresponding directory and all of its subdirectories.
-            int nextslot = find_watch_checked(watch, nextevent->wd);
+            int nextslot = find_watch_checked(*watch, nextevent->wd);
             if (nextslot == -1) {
                 // Reinitialize the `inotify` watch.
-                watch->fd = EOF;
+                (*watch)->fd = EOF;
                 // Cache reached an inconsistent state.
                 reinitialize(watch);
                 // Discard all remaining events in current `read` buffer.
@@ -342,7 +347,7 @@ static size_t process_next_inotify_event(struct arguswatch *watch, const struct 
             }
 
             rewrite_cached_paths(watch, path, event->name,
-                wd_to_path_name(watch, nextevent->wd), nextevent->name);
+                wd_to_path_name(*watch, nextevent->wd), nextevent->name);
 
             // Also processed the next (IN_MOVED_TO) event, so skip over it.
             evtlen += sizeof(struct inotify_event) + nextevent->len;
@@ -358,7 +363,7 @@ static size_t process_next_inotify_event(struct arguswatch *watch, const struct 
 #endif
             FORMAT_PATH(fullpath, path, event->name);
 
-            slot = find_watch_checked(watch, event->wd);
+            slot = find_watch_checked(*watch, event->wd);
             if (slot > -1 &&
                 remove_subtree(watch, fullpath) == -1) {
                 // Cache reached an inconsistent state.
@@ -379,7 +384,7 @@ static size_t process_next_inotify_event(struct arguswatch *watch, const struct 
         // lost any chance of keeping our cache consistent with the state of
         // the filesystem. Discard this `inotify` file descriptor and create a
         // new one, and remove and rebuild the cache.
-        slot = find_watch_checked(watch, event->wd);
+        slot = find_watch_checked(*watch, event->wd);
         if (slot > -1) {
             reinitialize(watch);
         }
@@ -394,11 +399,11 @@ static size_t process_next_inotify_event(struct arguswatch *watch, const struct 
         printf("filesystem unmounted: %s\n", path);
         fflush(stdout);
 #endif
-        send_watcher_kill_signal(watch->processevtfd);
-        mark_cache_slot_empty(watch->slot);
+        send_watcher_kill_signal((*watch)->processevtfd);
+        mark_cache_slot_empty((*watch)->slot);
         // No need to remove the watch; that happens automatically.
     } else if (event->mask & IN_MOVE_SELF &&
-        find_root_path(watch, path) != NULL) {
+        find_root_path(*watch, path) != NULL) {
 
         // If the root path moves to a new location in the same filesystem,
         // then all cached pathnames become invalid, and we have no direct way
@@ -414,13 +419,13 @@ static size_t process_next_inotify_event(struct arguswatch *watch, const struct 
         //======================
 
         char proc_path[PATH_MAX], new_path[PATH_MAX], pidc[8];
-        snprintf(proc_path, sizeof(proc_path), "/proc/%d/root/.", watch->pid);
-        snprintf(pidc, sizeof(pidc), "%d", watch->pid);
-        struct stat *root_stat = find_root_stat(watch, path);
+        snprintf(proc_path, sizeof(proc_path), "/proc/%d/root/.", (*watch)->pid);
+        snprintf(pidc, sizeof(pidc), "%d", (*watch)->pid);
+        struct stat *root_stat = find_root_stat(*watch, path);
 
         int traverse_stuff(const char *path, const struct stat *sb, int tflag, struct FTW *ftwbuf) {
             if (root_stat->st_ino == sb->st_ino) {
-                snprintf(new_path, sizeof(new_path), "/proc/%d/root%s", watch->pid,
+                snprintf(new_path, sizeof(new_path), "/proc/%d/root%s", (*watch)->pid,
                     path + (strlen(pidc) + 13));
                 return FTW_STOP;
             }
@@ -454,6 +459,10 @@ static size_t process_next_inotify_event(struct arguswatch *watch, const struct 
         reinitialize(watch);
     }
 
+    printf(" ===== %s :: DUMP_CACHE ===== \n", __func__);
+    DUMP_CACHE(*watch);
+    fflush(stdout);
+
     //check_cache_consistency(watch);
 
     return evtlen;
@@ -466,7 +475,7 @@ static size_t process_next_inotify_event(struct arguswatch *watch, const struct 
  * @param logfn
  * @return
  */
-static void process_inotify_events(struct arguswatch *watch, void (*logfn)(struct arguswatch_event *)) {
+static void process_inotify_events(struct arguswatch **watch, void (*logfn)(struct arguswatch_event *)) {
     const struct inotify_event *event;
     // Some systems cannot read integer variables if they are not properly
     // aligned on other systems, incorrect alignment may decrease performance
@@ -494,7 +503,7 @@ static void process_inotify_events(struct arguswatch *watch, void (*logfn)(struc
         return;
     }
 
-    len = read(watch->fd, (void *)&buf, IN_BUFFER_SIZE);
+    len = read((*watch)->fd, (void *)&buf, IN_BUFFER_SIZE);
     if (len == EOF) {
         if (errno != EAGAIN) {
 #if DEBUG
@@ -550,7 +559,7 @@ static void process_inotify_events(struct arguswatch *watch, void (*logfn)(struc
             // hardware and in environments with different filesystem activity
             // levels.
             ualarm(2000, 0);
-            readlen = read(watch->fd, buf + len, IN_BUFFER_SIZE);
+            readlen = read((*watch)->fd, buf + len, IN_BUFFER_SIZE);
 
             // In case `ualarm` should change errno.
             savederr = errno;
@@ -590,10 +599,6 @@ static void process_inotify_events(struct arguswatch *watch, void (*logfn)(struc
         // Advance to next event.
         event = IN_EVENT_NEXT(event, len, evtlen);
     }
-
-#if 0
-    check_cache_consistency(watch);
-#endif
 }
 
 /**
@@ -641,31 +646,38 @@ int start_inotify_watcher(char *name, const int pid, const int sid, char *nodena
     struct arguswatch *watch;
     int slot = find_cached_slot(pid, sid);
     if (slot > -1) {
-        watch = &wlcache[slot];
+        *watch = *wlcache[slot];
     } else {
         // Create new arguswatch placeholder struct, to be filled later.
-        watch = &(struct arguswatch){
-            .name = name,
-            .pid = pid,
-            .sid = sid,
-            .node_name = nodename,
-            .pod_name = podname,
-            .slot = -1,
-            .fd = EOF,
-            .rootpathc = pathc,
-            .rootpaths = paths,
-            .pathc = 0,
-            .ignorec = ignorec,
-            .ignores = ignores,
-            .event_mask = mask,
-            .only_dir = onlydir,
-            .recursive = recursive,
-            .max_depth = maxdepth,
-            .processevtfd = processevtfd,
-            .tags = tags,
-            .log_format = logformat
-        };
+        watch = calloc(1, sizeof(struct arguswatch));
+        if (watch == NULL) {
+#if DEBUG
+            perror("calloc");
+#endif
+        }
+        watch->name = name;
+        watch->pid = pid;
+        watch->sid = sid;
+        watch->node_name = nodename;
+        watch->pod_name = podname;
+        watch->slot = -1;
+        watch->fd = EOF;
+        watch->rootpathc = pathc;
+        watch->rootpaths = paths;
+        watch->pathc = 0;
+        watch->ignorec = ignorec;
+        watch->ignores = ignores;
+        watch->event_mask = mask;
+        watch->only_dir = onlydir;
+        watch->recursive = recursive;
+        watch->max_depth = maxdepth;
+        watch->processevtfd = processevtfd;
+        watch->tags = tags;
+        watch->log_format = logformat;
     }
+    printf(" ===== %s :: DUMP_CACHE ===== \n", __func__);
+    DUMP_CACHE(watch);
+    fflush(stdout);
 
     // Validate root paths with `stat` and for duplicates.
     validate_root_paths(watch);
@@ -676,7 +688,7 @@ int start_inotify_watcher(char *name, const int pid, const int sid, char *nodena
 #endif
 
     // Create an `inotify` instance and populate it with entries for paths.
-    fd = reinitialize(watch);
+    fd = reinitialize(&watch);
     if (fd == EOF) {
         goto out;
     }
@@ -706,7 +718,7 @@ int start_inotify_watcher(char *name, const int pid, const int sid, char *nodena
         if (pollc > 0) {
             if (fds[0].revents & POLLIN) {
                 // `inotify` events are available.
-                process_inotify_events(watch, logfn);
+                process_inotify_events(&watch, logfn);
             }
 
             if (fds[1].revents & POLLIN) {
@@ -730,7 +742,7 @@ out:
     // Close `inotify` file descriptor.
     close(fd);
     // Free watch cache.
-    clear_watch(watch);
+    clear_watch(&watch);
 
     return errno ? EXIT_FAILURE : EXIT_SUCCESS;
 }

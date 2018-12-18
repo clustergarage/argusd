@@ -34,7 +34,7 @@
 #include "arguscache.h"
 #include "argusutil.h"
 
-struct arguswatch *wlcache = NULL;
+struct arguswatch **wlcache = NULL;
 int wlcachec = 0;
 
 /**
@@ -42,15 +42,16 @@ int wlcachec = 0;
  *
  * @param watch
  */
-void clear_watch(struct arguswatch *watch) {
-    const int slot = watch->slot;
+void clear_watch(struct arguswatch **watch) {
+    const int slot = (*watch)->slot;
     if (slot == -1) {
         return;
     }
     // Free up dynamically-allocated memory for `wd` and `paths` arrays.
-    free(watch->paths);
-    free(watch->wd);
-    watch->pathc = 0;
+    free((*watch)->paths);
+    free((*watch)->wd);
+    (*watch)->pathc = 0;
+    // Mark remaining items in cache slot as default/empty values.
     mark_cache_slot_empty(slot);
 }
 
@@ -64,8 +65,8 @@ void clear_watch(struct arguswatch *watch) {
 int find_cached_slot(const int pid, const int sid) {
     int i;
     for (i = 0; i < wlcachec; ++i) {
-        if (wlcache[i].pid == pid &&
-            wlcache[i].sid == sid) {
+        if (wlcache[i]->pid == pid &&
+            wlcache[i]->sid == sid) {
             return i;
         }
     }
@@ -77,29 +78,29 @@ int find_cached_slot(const int pid, const int sid) {
  *
  * @param watch
  */
-void check_cache_consistency(struct arguswatch *watch) {
+void check_cache_consistency(struct arguswatch **watch) {
     struct stat sb;
     int i;
 
-    for (i = 0; i < watch->pathc;) {
-        if (*watch->paths[i] == '\0') {
+    for (i = 0; i < (*watch)->pathc;) {
+        if (*(*watch)->paths[i] == '\0') {
             goto out_increaseloop;
         }
-        if (lstat(watch->paths[i], &sb) == EOF) {
+        if (lstat((*watch)->paths[i], &sb) == EOF) {
 #if DEBUG
             printf("%s: stat: [slot = %d; wd = %d] %s: %s\n", __func__,
-                i, watch->wd[i], watch->paths[i], strerror(errno));
+                i, (*watch)->wd[i], (*watch)->paths[i], strerror(errno));
             fflush(stdout);
 #endif
             remove_item_from_cache(watch, i);
             continue;
         }
 
-        if (watch->only_dir &&
+        if ((*watch)->only_dir &&
             !S_ISDIR(sb.st_mode)) {
 #if DEBUG
             fprintf(stderr, "%s: %s is not a directory\n", __func__,
-                watch->paths[i]);
+                (*watch)->paths[i]);
 #endif
             remove_item_from_cache(watch, i);
             continue;
@@ -119,16 +120,16 @@ out_increaseloop:
  * @param watch
  * @param index
  */
-void remove_item_from_cache(struct arguswatch *watch, int const index) {
+void remove_item_from_cache(struct arguswatch **watch, int const index) {
     int i;
     printf(" ####### %s => %d\n", __func__, index);
     fflush(stdout);
-    for (i = index; i < watch->pathc - 1; ++i) {
-        watch->wd[i] = watch->wd[i + 1];
-        watch->paths[i] = watch->paths[i + 1];
+    for (i = index; i < (*watch)->pathc - 1; ++i) {
+        (*watch)->wd[i] = (*watch)->wd[i + 1];
+        (*watch)->paths[i] = (*watch)->paths[i + 1];
     }
-    if (watch->pathc) {
-        free(watch->paths[--watch->pathc]);
+    if ((*watch)->pathc) {
+        free((*watch)->paths[--(*watch)->pathc]);
     }
 }
 
@@ -145,8 +146,8 @@ int find_watch(const struct arguswatch *watch, const int wd) {
     if (watch->slot == -1) {
         return -1;
     }
-    for (i = 0; i < wlcache[watch->slot].pathc; ++i) {
-        if (wlcache[watch->slot].wd[i] == wd) {
+    for (i = 0; i < wlcache[watch->slot]->pathc; ++i) {
+        if (wlcache[watch->slot]->wd[i] == wd) {
             return i;
         }
     }
@@ -181,7 +182,7 @@ int find_watch_checked(const struct arguswatch *watch, const int wd) {
  * @param slot
  */
 void mark_cache_slot_empty(const int slot) {
-    wlcache[slot] = (struct arguswatch){
+    wlcache[slot] = &(struct arguswatch){
         .pid = -1,
         .sid = -1,
         .slot = -1,
@@ -202,14 +203,14 @@ void mark_cache_slot_empty(const int slot) {
 int find_empty_cache_slot() {
     int i;
     for (i = 0; i < wlcachec; ++i) {
-        if (wlcache[i].slot == -1) {
+        if (wlcache[i]->slot == -1) {
             return i;
         }
     }
     // No free slot found; resize cache.
     wlcachec += ALLOC_INC;
 
-    wlcache = realloc(wlcache, wlcachec * sizeof(struct arguswatch));
+    wlcache = realloc(wlcache, wlcachec * sizeof(struct arguswatch *));
     if (wlcache == NULL) {
 #if DEBUG
         perror("realloc");
@@ -229,16 +230,11 @@ int find_empty_cache_slot() {
  *
  * @param watch
  */
-void add_watch_to_cache(struct arguswatch *watch) {
+void add_watch_to_cache(struct arguswatch **watch) {
     int slot = find_empty_cache_slot();
-    watch->slot = slot;
+    (*watch)->slot = slot;
     // Point this `wlcache` slot to `watch`.
     wlcache[slot] = *watch;
-//    if (memcpy(&wlcache[slot], watch, sizeof(struct arguswatch)) == NULL) {
-//#if DEBUG
-//        perror("memcpy");
-//#endif
-//    }
 }
 
 /**
@@ -252,11 +248,11 @@ void add_watch_to_cache(struct arguswatch *watch) {
 int path_name_to_cache_slot(const struct arguswatch *watch, const char *path) {
     int i;
     if (watch->slot == -1 ||
-        wlcache[watch->slot].pathc == -1) {
+        wlcache[watch->slot]->pathc == -1) {
         return -1;
     }
-    for (i = 0; i < wlcache[watch->slot].pathc; ++i) {
-        if (strcmp(wlcache[watch->slot].paths[i], path) == 0) {
+    for (i = 0; i < wlcache[watch->slot]->pathc; ++i) {
+        if (strcmp(wlcache[watch->slot]->paths[i], path) == 0) {
             return i;
         }
     }
@@ -294,8 +290,8 @@ int wd_to_cache_slot(const struct arguswatch *watch, const int wd) {
     if (watch->slot == -1) {
         return -1;
     }
-    for (i = 0; i < wlcache[watch->slot].pathc; ++i) {
-        if (wlcache[watch->slot].wd[i] == wd) {
+    for (i = 0; i < wlcache[watch->slot]->pathc; ++i) {
+        if (wlcache[watch->slot]->wd[i] == wd) {
             return i;
         }
     }

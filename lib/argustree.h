@@ -31,14 +31,14 @@ void validate_root_paths(struct arguswatch *watch);
 char **find_root_path(const struct arguswatch *watch, const char *path);
 char **find_path(const struct arguswatch *watch, const char *path);
 struct stat *find_root_stat(const struct arguswatch *watch, const char *path);
-void remove_root_path(struct arguswatch *watch, const char *path);
-void replace_root_path(struct arguswatch *watch, const char *path, const char *newpath);
+void remove_root_path(struct arguswatch **watch, const char *path);
+void replace_root_path(struct arguswatch **watch, const char *path, const char *newpath);
 bool should_ignore_path(struct arguswatch *watch, const char *path);
-int watch_path(struct arguswatch *watch, const char *path);
-int watch_path_recursive(struct arguswatch *watch, const char *path);
-void watch_subtree_path(struct arguswatch *watch, const char *path);
-void watch_subtree(struct arguswatch *watch);
-void rewrite_cached_paths(const struct arguswatch *watch, const char *oldpathpf, const char *oldname, const char *newpathpf, const char *newname);
-int remove_subtree(const struct arguswatch *watch, char *path);
+int watch_path(struct arguswatch **watch, const char *path);
+int watch_path_recursive(struct arguswatch **watch, const char *path);
+void watch_subtree_path(struct arguswatch **watch, const char *path);
+void watch_subtree(struct arguswatch **watch);
+void rewrite_cached_paths(struct arguswatch **watch, const char *oldpathpf, const char *oldname, const char *newpathpf, const char *newname);
+int remove_subtree(struct arguswatch **watch, char *path);
 
 #endif
