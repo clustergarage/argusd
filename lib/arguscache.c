@@ -43,16 +43,17 @@ int wlcachec = 0;
  * @param watch
  */
 void clear_watch(struct arguswatch **watch) {
-    const int slot = (*watch)->slot;
-    if (slot == -1) {
+    int i;
+    if ((*watch)->slot == -1) {
         return;
     }
     // Free up dynamically-allocated memory for `wd` and `paths` arrays.
-    free((*watch)->paths);
-    free((*watch)->wd);
+    //for (i = 0; i < (*watch)->pathc; ++i) {
+    //    free((*watch)->paths[i]);
+    //}
+    //free((*watch)->wd);
+    //free((*watch)->paths);
     (*watch)->pathc = 0;
-    // Mark remaining items in cache slot as default/empty values.
-    mark_cache_slot_empty(slot);
 }
 
 /**
@@ -65,6 +66,11 @@ void clear_watch(struct arguswatch **watch) {
 int find_cached_slot(const int pid, const int sid) {
     int i;
     for (i = 0; i < wlcachec; ++i) {
+        // In the case we're still initializing the cache, we want to make sure
+        // we don't access unmapped memory.
+        if (wlcache[i] == NULL) {
+            continue;
+        }
         if (wlcache[i]->pid == pid &&
             wlcache[i]->sid == sid) {
             return i;
@@ -180,24 +186,10 @@ int find_watch_checked(const struct arguswatch *watch, const int wd) {
  * @param slot
  */
 void mark_cache_slot_empty(const int slot) {
-    wlcache[slot] = &(struct arguswatch){
-        .pid = -1,
-        .sid = -1,
-        .slot = -1,
-        .node_name = '\0',
-        .pod_name = '\0',
-        .fd = EOF,
-        .rootpathc = 0,
-        .pathc = 0,
-        .event_mask = (uint32_t)-1,
-        .only_dir = false,
-        .recursive = false,
-        .max_depth = 0,
-        .follow_move = false,
-        .processevtfd = EOF,
-        .tags = '\0',
-        .log_format = '\0'
-    };
+    struct arguswatch *watch = calloc(1, sizeof(struct arguswatch));
+    // Placeholder to pick open slot.
+    watch->slot = -1;
+    wlcache[slot] = &*watch;
 }
 
 /**
@@ -206,16 +198,17 @@ void mark_cache_slot_empty(const int slot) {
  * @return
  */
 int find_empty_cache_slot() {
-    int i;
+    int i, len;
     for (i = 0; i < wlcachec; ++i) {
         if (wlcache[i]->slot == -1) {
             return i;
         }
     }
-    // No free slot found; resize cache.
-    wlcachec += ALLOC_INC;
 
-    wlcache = realloc(wlcache, wlcachec * sizeof(struct arguswatch *));
+    // No free slot found; resize cache.
+    len = wlcachec + ALLOC_INC;
+
+    wlcache = realloc(wlcache, len * sizeof(struct arguswatch *));
     if (wlcache == NULL) {
 #if DEBUG
         perror("realloc");
@@ -223,7 +216,7 @@ int find_empty_cache_slot() {
         return -1;
     }
 
-    for (i = wlcachec - ALLOC_INC; i < wlcachec; ++i) {
+    for (i = len - ALLOC_INC; i < len; ++i, ++wlcachec) {
         mark_cache_slot_empty(i);
     }
     // Return first slot in newly allocated space.

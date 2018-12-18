@@ -88,18 +88,8 @@ static int reinitialize(struct arguswatch **watch) {
     }
 
 #if DEBUG
-    int i, cnt;
-    for (i = 0, cnt = 0; i < wlcachec; ++i) {
-        if (wlcache[i]->pid != (*watch)->pid ||
-            wlcache[i]->sid != (*watch)->sid) {
-            continue;
-        }
-        if (wlcache[i]->pathc) {
-            cnt += wlcache[i]->pathc;
-        }
-    }
     if (rebuild) {
-        printf("rebuilt cache with %d entries\n", cnt);
+        printf("rebuilt watch with %d entries\n", (*watch)->pathc);
         fflush(stdout);
     }
 #endif
@@ -134,10 +124,6 @@ static size_t process_next_inotify_event(struct arguswatch **watch, const struct
     int slot = -1, wdslot;
 
     if (event->wd != EOF) {
-        path = wd_to_path_name(*watch, event->wd);
-
-        // =================== start
-
         slot = find_watch_checked(*watch, event->wd);
         if (slot == -1 ||
             // Only continue with the events we care about.
@@ -145,6 +131,8 @@ static size_t process_next_inotify_event(struct arguswatch **watch, const struct
             // Discard all remaining events in current `read` buffer.
             return IN_BUFFER_SIZE;
         }
+
+        path = wd_to_path_name(*watch, event->wd);
 
         struct arguswatch_event awevent = {
             .watch = *watch,
@@ -162,8 +150,6 @@ static size_t process_next_inotify_event(struct arguswatch **watch, const struct
 
         // Call ArgusdImpl log function passed into this watch.
         logfn(&awevent);
-
-        // =================== end
 
         if (!(event->mask & IN_IGNORED)) {
             // IN_Q_OVERFLOW has (event->wd == EOF). Skip IN_IGNORED, since it
@@ -409,8 +395,8 @@ static size_t process_next_inotify_event(struct arguswatch **watch, const struct
 #endif
 
         if ((*watch)->follow_move) {
-            replace_moved_root_path(watch, path);
-            //reinitialize(watch);
+            find_replace_root_path(watch, path);
+            reinitialize(watch);
         } else {
             remove_root_path(watch, path);
             if (remove_subtree(watch, path) == -1) {

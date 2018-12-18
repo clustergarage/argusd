@@ -30,7 +30,7 @@
 #include "argusutil.h"
 
 #ifndef ALLOC_INC
-#define ALLOC_INC 128
+#define ALLOC_INC 32
 #endif
 
 void clear_watch(struct arguswatch **watch);

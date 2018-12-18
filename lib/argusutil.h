@@ -52,14 +52,14 @@
     for (int i = 0; i < (watch)->rootpathc; ++i) {                           \
         printf("     $     rootpaths[%d] = %s\n", i, (watch)->rootpaths[i]); \
     }                                                                        \
-    printf("    $$   pathc = %d\n", (watch)->pathc);                         \
-    for (int i = 0; i < (watch)->pathc; ++i) {                               \
-        printf("     $     wd[%d] = %d\n", i, (watch)->wd[i]);               \
-        printf("     $     paths[%d] = %s\n", i, (watch)->paths[i]);         \
-    }                                                                        \
     printf("    $$   ignorec = %d\n", (watch)->ignorec);                     \
     for (int i = 0; i < (watch)->ignorec; ++i) {                             \
-        printf("     $     ignores[%d] = %s\n", i, (watch)->ignores[i]);     \
+        printf("     $     ignore[%d] = %s\n", i, (watch)->ignores[i]);      \
+    }                                                                        \
+    printf("    $$   pathc = %d\n", (watch)->pathc);                         \
+    for (int i = 0; i < (watch)->pathc; ++i) {                               \
+        printf("     $     [%d] wd = %d; path = %s\n", i, (watch)->wd[i],    \
+            (watch)->paths[i]);                                              \
     }                                                                        \
     printf("    $$   event_mask = %d\n", (watch)->event_mask);               \
     printf("    $$   only_dir = %d\n", (watch)->only_dir);                   \

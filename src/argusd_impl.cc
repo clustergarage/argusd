@@ -468,7 +468,6 @@ void logArgusWatchEvent(struct arguswatch_event *awevent) {
         LOG(WARNING) << "Malformed ArgusWatcher `.spec.logFormat`: \"" << e.what() << "\"";
     }
 
-#if 0
     if (kMetricsWriter != nullptr) {
         auto metric = std::make_shared<argus::ArgusdMetricsHandle>();
         metric->set_arguswatcher(awevent->watch->name);
@@ -480,7 +479,6 @@ void logArgusWatchEvent(struct arguswatch_event *awevent) {
             // Broken stream.
         }
     }
-#endif
 }
 #ifdef __cplusplus
 }; // extern "C"

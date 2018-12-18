@@ -172,7 +172,7 @@ void remove_root_path(struct arguswatch **watch, const char *path) {
     }
 }
 
-void replace_moved_root_path(struct arguswatch **watch, const char *path) {
+void find_replace_root_path(struct arguswatch **watch, const char *path) {
     char **p = NULL;
     char procpath[PATH_MAX], foundpath[PATH_MAX], pidc[8];
     int len;
@@ -399,14 +399,6 @@ int watch_path_recursive(struct arguswatch **watch, const char *path) {
     return (*watch)->pathc;
 }
 
-void watch_subtree_path(struct arguswatch **watch, const char *path) {
-    if ((*watch)->recursive) {
-        watch_path_recursive(watch, path);
-    } else {
-        watch_path(watch, path);
-    }
-}
-
 /**
  * Add watches and cache entries for a subtree, logging a message noting the
  * number entries added.
@@ -416,7 +408,11 @@ void watch_subtree_path(struct arguswatch **watch, const char *path) {
 void watch_subtree(struct arguswatch **watch) {
     int i;
     for (i = 0; i < (*watch)->rootpathc; ++i) {
-        watch_subtree_path(watch, (*watch)->rootpaths[i]);
+        if ((*watch)->recursive) {
+            watch_path_recursive(watch, (*watch)->rootpaths[i]);
+        } else {
+            watch_path(watch, (*watch)->rootpaths[i]);
+        }
 #if DEBUG
         printf("  watch_subtree: %s: %d entries added\n",
             (*watch)->rootpaths[i], (*watch)->pathc);
