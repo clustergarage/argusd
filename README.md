@@ -1,6 +1,7 @@
 # argusd
 
 [![Docker Automated build](https://img.shields.io/docker/build/clustergarage/argusd.svg?style=flat-square)](https://hub.docker.com/r/clustergarage/argusd)
+[![Latest Argus release](https://img.shields.io/github/release/clustergarage/argus.svg?style=flat-square)](https://github.com/clustergarage/argus)
 
 This repository implements a daemon process responsible for maintaining a collection of `inotify`-style listeners defined by the user to gain insights into when certain key events happen at the filesystem level of their container.
 
