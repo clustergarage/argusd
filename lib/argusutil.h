@@ -31,7 +31,7 @@
 #include <unistd.h>
 
 #ifndef DEBUG
-#define DEBUG 1
+#define DEBUG 0
 #endif
 
 #define IN_EVENT_LEN (sizeof(struct inotify_event))
@@ -73,26 +73,31 @@
 
 struct arguswatch {
     const char *name;                 // Name of ArgusWatcher.
-    int pid, sid;                     // PID, Subject ID.
     const char *node_name, *pod_name; // Name of node, pod in which process is running.
-    int slot;                         // `wlcache` slot.
-    int fd;                           // `inotify` file descriptor.
-    int *wd;                          // Array of watch descriptors (-1 if slot unused).
-    unsigned int rootpathc;           // Cached path count.
-    char **rootpaths;                 // Cached path name(s).
-    struct stat *rootstat;            // `stat` structures for root directories.
-    unsigned int pathc;               // Cached path count, including recursive traversal.
-    char **paths;                     // Cached path name(s), including recursive traversal.
-    unsigned int ignorec;             // Ignore path pattern count.
-    char **ignores;                   // Ignore path patterns.
-    uint32_t event_mask;              // Event mask for `inotify`.
-    bool only_dir;                    // Flag to watch only directories.
-    bool recursive;                   // Flag to watch recursively.
-    int max_depth;                    // Max `nftw` depth to recurse through.
-    bool follow_move;                 // Flag to follow move events and watch updated path.
-    int processevtfd;                 // Anonymous pipe to send watch kill signal.
     const char *tags;                 // Custom tags for printing ArgusWatcher event.
     const char *log_format;           // Custom logging format for printing ArgusWatcher event.
+    char **rootpaths;                 // Cached path name(s).
+    char **ignores;                   // Ignore path patterns.
+    char **paths;                     // Cached path name(s), including recursive traversal.
+    int *wd;                          // Array of watch descriptors (-1 if slot unused).
+    struct stat *rootstat;            // `stat` structures for root directories.
+    unsigned int rootpathc;           // Cached path count.
+    unsigned int ignorec;             // Ignore path pattern count.
+    unsigned int pathc;               // Cached path count, including recursive traversal.
+    uint32_t event_mask;              // Event mask for `inotify`.
+    int pid, sid, slot;               // PID, Subject ID, `wlcache` slot.
+    int fd, processevtfd;             // `inotify` file descriptor, anonymous pipe to send watch kill signal.
+    int max_depth;                    // Max `nftw` depth to recurse through.
+    bool only_dir;                    // Flag to watch only directories.
+    bool recursive;                   // Flag to watch recursively.
+    bool follow_move;                 // Flag to follow move events and watch updated path.
+};
+
+struct arguswatch_event {
+    struct arguswatch *watch;
+    const char *path_name, *file_name;
+    uint32_t event_mask;
+    bool is_dir;
 };
 
 extern struct arguswatch **wlcache; // Array of cached watches.

@@ -217,6 +217,7 @@ void find_replace_root_path(struct arguswatch **watch, const char *path) {
         perror("realloc");
 #endif
     }
+    free(*p);
     *p = strdup(foundpath);
 }
 
@@ -329,7 +330,10 @@ int watch_path(struct arguswatch **watch, const char *path) {
 #if DEBUG
         perror("realloc");
 #endif
+        return -1;
     }
+    // No need to `free` before the `strdup` here because we clear out the
+    // individual paths in `clear_watch` in the case of rebuilding.
     (*watch)->paths[(*watch)->pathc] = strdup(path);
 
     ++(*watch)->pathc;
@@ -454,6 +458,7 @@ void rewrite_cached_paths(struct arguswatch **watch, const char *oldpathpf, cons
             (*watch)->paths[i][len] == '\0')) {
 
             FORMAT_PATH(newpath, newpf, &(*watch)->paths[i][len]);
+            free((*watch)->paths[i]);
             (*watch)->paths[i] = strdup(newpath);
 #if DEBUG
             printf("    wd %d => %s\n", (*watch)->wd[i], newpath);

@@ -35,13 +35,6 @@
 #define ARGUSNOTIFY_KILL SIGKILL
 #endif
 
-struct arguswatch_event {
-    struct arguswatch *watch;
-    uint32_t event_mask;
-    const char *path_name, *file_name;
-    bool is_dir;
-};
-
 static int reinitialize(struct arguswatch **watch);
 static size_t process_next_inotify_event(struct arguswatch **watch, const struct inotify_event *event, ssize_t len,
     bool first, void (*logfn)(struct arguswatch_event *));
