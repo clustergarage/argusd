@@ -115,13 +115,13 @@ static int reinitialize(struct arguswatch **watch) {
  * @param logfn
  * @return
  */
-static size_t process_next_inotify_event(struct arguswatch **watch, const struct inotify_event *event, ssize_t len,
-    bool first, void (*logfn)(struct arguswatch_event *)) {
+static size_t process_next_inotify_event(struct arguswatch **watch, const struct inotify_event *event, const ssize_t len,
+    const bool first, arguswatch_logfn logfn) {
 
-    size_t evtlen;
-    char *path = NULL;
+    const char *path = NULL;
     char fullpath[PATH_MAX + NAME_MAX + 1];
-    int slot = -1, wdslot;
+    int slot, wdslot;
+    size_t evtlen;
 
     if (event->wd != EOF) {
         slot = find_watch_checked(*watch, event->wd);
@@ -149,7 +149,7 @@ static size_t process_next_inotify_event(struct arguswatch **watch, const struct
 #endif
 
         // Call ArgusdImpl log function passed into this watch.
-        logfn(&awevent);
+        (*logfn)(&awevent);
 
         if (!(event->mask & IN_IGNORED)) {
             // IN_Q_OVERFLOW has (event->wd == EOF). Skip IN_IGNORED, since it
@@ -208,7 +208,7 @@ static size_t process_next_inotify_event(struct arguswatch **watch, const struct
          *      confused state).
          */
         if (path_name_to_cache_slot(*watch, fullpath) == -1) {
-            wdslot = wd_to_cache_slot(*watch, event->wd);
+            wdslot = find_watch(*watch, event->wd);
             if (wdslot > -1 &&
                 // Only do this if watching recursively.
                 (*watch)->recursive) {
@@ -306,7 +306,7 @@ static size_t process_next_inotify_event(struct arguswatch **watch, const struct
          * compromise that catches the vast majority of intra-tree renames and
          * triggers relatively few cache rebuilds.
          */
-        const struct inotify_event *nextevent = (const struct inotify_event *)(event + evtlen);
+        const struct inotify_event *nextevent = event + evtlen;
 
         if ((nextevent < event + len) &&
             (nextevent->mask & IN_MOVED_TO) &&
@@ -335,7 +335,7 @@ static size_t process_next_inotify_event(struct arguswatch **watch, const struct
             // monitoring need to remove the watches and remove the cache
             // entries for the moved directory and all of its subdirectories.
 #if DEBUG
-            printf("moved out: %p %p\n", path, event->name);
+            printf("moved out: %p %p\n", (void *)path, (void *)event->name);
             printf("first = %d; remaining bytes = %ld\n", first, event + len - nextevent);
             fflush(stdout);
 #endif
@@ -377,7 +377,7 @@ static size_t process_next_inotify_event(struct arguswatch **watch, const struct
         printf("filesystem unmounted: %s\n", path);
         fflush(stdout);
 #endif
-        send_watcher_kill_signal((*watch)->processevtfd);
+        send_watcher_kill_signal(&(*watch)->processevtfd);
         mark_cache_slot_empty((*watch)->slot);
         // No need to remove the watch; that happens automatically.
     } else if (event->mask & IN_MOVE_SELF &&
@@ -423,7 +423,7 @@ static size_t process_next_inotify_event(struct arguswatch **watch, const struct
  * @param logfn
  * @return
  */
-static void process_inotify_events(struct arguswatch **watch, void (*logfn)(struct arguswatch_event *)) {
+static void process_inotify_events(struct arguswatch **watch, arguswatch_logfn logfn) {
     const struct inotify_event *event;
     // Some systems cannot read integer variables if they are not properly
     // aligned on other systems, incorrect alignment may decrease performance
@@ -577,9 +577,10 @@ static void process_inotify_events(struct arguswatch **watch, void (*logfn)(stru
  * @param logfn
  * @return
  */
-int start_inotify_watcher(char *name, const int pid, const int sid, char *nodename, char *podname, unsigned int pathc, char *paths[],
-    unsigned int ignorec, char *ignores[], uint32_t mask, bool onlydir, bool recursive, int maxdepth, bool followmove,
-    int processevtfd, char *tags, char *logformat, void (*logfn)(struct arguswatch_event *)) {
+int start_inotify_watcher(const char *name, const char *nodename, const char *podname, const int pid, const int sid,
+    const unsigned int pathc, const char *paths[], const unsigned int ignorec, const char *ignores[], const uint32_t mask,
+    const bool onlydir, const bool recursive, const int maxdepth, const bool followmove, const int processevtfd,
+    const char *tags, const char *logformat, arguswatch_logfn logfn) {
 
     int fd, pollc;
     nfds_t nfds;
@@ -594,33 +595,37 @@ int start_inotify_watcher(char *name, const int pid, const int sid, char *nodena
     // the supplied path.
     struct arguswatch *watch;
     int slot = find_cached_slot(pid, sid);
-    if (slot > -1) {
-        *watch = *wlcache[slot];
+    if (slot > -1 &&
+        wlcache[slot] != NULL) {
+        watch = &*wlcache[slot];
     } else {
-        // Create new arguswatch placeholder struct, to be filled later.
+        // Create new arguswatch placeholder struct with select watch
+        // parameters that cannot change; the rest to be filled later.
         watch = &(struct arguswatch){
             .name = name,
+            .node_name = nodename,
+            .pod_name = podname,
+            .pathc = 0,
             .pid = pid,
             .sid = sid,
             .slot = -1,
-            .node_name = nodename,
-            .pod_name = podname,
             .fd = EOF,
-            .rootpathc = pathc,
-            .rootpaths = paths,
-            .pathc = 0,
-            .ignorec = ignorec,
-            .ignores = ignores,
-            .event_mask = mask,
-            .only_dir = onlydir,
-            .recursive = recursive,
-            .max_depth = maxdepth,
-            .follow_move = followmove,
-            .processevtfd = processevtfd,
-            .tags = tags,
-            .log_format = logformat
+            .processevtfd = processevtfd
         };
     }
+
+    // Assign or update the passed-in watch parameters that can possibly change.
+    watch->rootpathc = pathc;
+    watch->rootpaths = (char **)paths;
+    watch->ignorec = ignorec;
+    watch->ignores = (char **)ignores;
+    watch->event_mask = mask;
+    watch->only_dir = onlydir;
+    watch->recursive = recursive;
+    watch->max_depth = maxdepth;
+    watch->follow_move = followmove;
+    watch->tags = tags;
+    watch->log_format = logformat;
 
     // Validate root paths with `stat` and for duplicates.
     validate_root_paths(watch);
@@ -696,9 +701,9 @@ out:
  *
  * @param processfd
  */
-void send_watcher_kill_signal(int processfd) {
+void send_watcher_kill_signal(const int *const processfd) {
     uint64_t value = ARGUSNOTIFY_KILL;
-    if (write(processfd, &value, sizeof(value)) == EOF) {
+    if (write(*processfd, &value, sizeof(value)) == EOF) {
 #if DEBUG
         perror("write");
 #endif

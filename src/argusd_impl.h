@@ -43,18 +43,17 @@ public:
     grpc::Status RecordMetrics(grpc::ServerContext *context, const argus::Empty *request, grpc::ServerWriter<argus::ArgusdMetricsHandle> *writer) override;
 
 private:
-    std::vector<int> getPidsFromRequest(std::shared_ptr<argus::ArgusdConfig> request);
-    std::shared_ptr<argus::ArgusdHandle> findArgusdWatcherByPids(std::string nodeName, std::vector<int> pids);
-    char **getPathArrayFromSubject(int pid, std::shared_ptr<argus::ArgusWatcherSubject> subject);
-    char **getIgnoreArrayFromSubject(std::shared_ptr<argus::ArgusWatcherSubject> subject);
-    static std::string getTagListFromSubject(std::shared_ptr<argus::ArgusWatcherSubject> subject);
-    uint32_t getEventMaskFromSubject(std::shared_ptr<argus::ArgusWatcherSubject> subject);
+    std::vector<int> getPidsFromRequest(std::shared_ptr<argus::ArgusdConfig> request) const;
+    std::shared_ptr<argus::ArgusdHandle> findArgusdWatcherByPids(std::string nodeName, std::vector<int> pids) const;
+    char **getPathArrayFromSubject(int pid, std::shared_ptr<argus::ArgusWatcherSubject> subject) const;
+    char **getIgnoreArrayFromSubject(std::shared_ptr<argus::ArgusWatcherSubject> subject) const;
+    std::string getTagListFromSubject(std::shared_ptr<argus::ArgusWatcherSubject> subject) const;
+    uint32_t getEventMaskFromSubject(std::shared_ptr<argus::ArgusWatcherSubject> subject) const;
     void createInotifyWatcher(std::string watcherName, std::string nodeName, std::string podName,
         std::shared_ptr<argus::ArgusWatcherSubject> subject, int pid, int sid,
         google::protobuf::RepeatedField<google::protobuf::int32> *procFds, std::string logFormat);
-    void sendKillSignalToWatcher(std::shared_ptr<argus::ArgusdHandle> watcher);
-    void eraseEventProcessfd(google::protobuf::RepeatedField<google::protobuf::int32> *eventProcessfds, int processfd);
-    void sendExitMessageToMessageQueue(std::shared_ptr<argus::ArgusdHandle> watcher);
+    void sendKillSignalToWatcher(std::shared_ptr<argus::ArgusdHandle> watcher) const;
+    void eraseEventProcessfd(google::protobuf::RepeatedField<google::protobuf::int32> *eventProcessfds, int processfd) const;
 
     /**
      * Helper function to remove prepended container protocol from `containerId`
@@ -74,7 +73,7 @@ private:
      * @param str
      * @return
      */
-    inline char *convertStringToCString(const std::string &str) const {
+    inline const char *convertStringToCString(const std::string &str) const {
         char *cstr = new char[str.size() + 1];
         strncpy(cstr, str.c_str(), str.size() + 1);
         return cstr;
@@ -91,7 +90,7 @@ extern grpc::ServerWriter<argus::ArgusdMetricsHandle> *kMetricsWriter;
 #ifdef __cplusplus
 extern "C" {
 #endif
-void logArgusWatchEvent(struct arguswatch_event *);
+const void logArgusWatchEvent(struct arguswatch_event *);
 #ifdef __cplusplus
 }; // extern "C"
 #endif

@@ -44,7 +44,7 @@
  *
  * @param watch
  */
-void validate_root_paths(struct arguswatch *watch) {
+void validate_root_paths(struct arguswatch *const watch) {
     int i, j;
     struct stat sb;
 
@@ -111,7 +111,7 @@ void validate_root_paths(struct arguswatch *watch) {
  * @param path
  * @return
  */
-char **find_root_path(const struct arguswatch *watch, const char *path) {
+char **find_root_path(const struct arguswatch *const watch, const char *const path) {
     int i;
     for (i = 0; i < watch->rootpathc; ++i) {
         if (watch->rootpaths[i] != NULL &&
@@ -130,7 +130,7 @@ char **find_root_path(const struct arguswatch *watch, const char *path) {
  * @param path
  * @return
  */
-struct stat *find_root_stat(const struct arguswatch *watch, const char *path) {
+static struct stat *find_root_stat(const struct arguswatch *const watch, const char *const path) {
     int i;
     for (i = 0; i < watch->rootpathc; ++i) {
         if (watch->rootpaths[i] != NULL &&
@@ -148,7 +148,7 @@ struct stat *find_root_stat(const struct arguswatch *watch, const char *path) {
  * @param watch
  * @param path
  */
-void remove_root_path(struct arguswatch **watch, const char *path) {
+void remove_root_path(struct arguswatch **watch, const char *const path) {
     char **p = find_root_path(*watch, path);
 #if DEBUG
     printf("%s: %s\n", __func__, path);
@@ -172,15 +172,13 @@ void remove_root_path(struct arguswatch **watch, const char *path) {
     }
 }
 
-void find_replace_root_path(struct arguswatch **watch, const char *path) {
-    char **p = NULL;
+void find_replace_root_path(struct arguswatch **watch, const char *const path) {
     char procpath[PATH_MAX], foundpath[PATH_MAX], pidc[8];
-    int len;
-    struct stat *rootstat;
+    char **p = find_root_path(*watch, path);
+    struct stat *rootstat = find_root_stat(*watch, path);
 
     snprintf(procpath, sizeof(procpath), "/proc/%d/root/.", (*watch)->pid);
     snprintf(pidc, sizeof(pidc), "%d", (*watch)->pid);
-    rootstat = find_root_stat(*watch, path);
 
     int traverse_root(const char *path, const struct stat *sb, int tflag, struct FTW *ftwbuf) {
         if (rootstat->st_ino == sb->st_ino) {
@@ -198,7 +196,6 @@ void find_replace_root_path(struct arguswatch **watch, const char *path) {
 #endif
     }
 
-    p = find_root_path(*watch, path);
 #if DEBUG
     printf("%s: %s -> %s\n", __func__, path, foundpath);
     fflush(stdout);
@@ -230,7 +227,7 @@ void find_replace_root_path(struct arguswatch **watch, const char *path) {
  * @param path
  * @return
  */
-bool should_ignore_path(struct arguswatch *watch, const char *path) {
+static bool should_ignore_path(const struct arguswatch *const watch, const char *const path) {
     struct stat sb;
     int i;
 
@@ -271,7 +268,7 @@ bool should_ignore_path(struct arguswatch *watch, const char *path) {
  * @param path
  * @return
  */
-int watch_path(struct arguswatch **watch, const char *path) {
+static int watch_path(struct arguswatch **watch, const char *const path) {
     int wd;
 
     // Dont add non-directories unless directly specified by `rootpaths` and
@@ -350,7 +347,7 @@ int watch_path(struct arguswatch **watch, const char *path) {
  * @param path
  * @return
  */
-int watch_path_recursive(struct arguswatch **watch, const char *path) {
+static int watch_path_recursive(struct arguswatch **watch, const char *const path) {
     /**
      * Function called by `nftw` to traverse a directory tree that adds a watch
      * for each directory in the tree. Each successful call to this function
@@ -436,8 +433,8 @@ void watch_subtree(struct arguswatch **watch) {
  * @param newpathpf
  * @param newname
  */
-void rewrite_cached_paths(struct arguswatch **watch, const char *oldpathpf, const char *oldname,
-    const char *newpathpf, const char *newname) {
+void rewrite_cached_paths(struct arguswatch **watch, const char *const oldpathpf, const char *const oldname,
+    const char *const newpathpf, const char *const newname) {
 
     char fullpath[PATH_MAX], newpf[PATH_MAX], newpath[PATH_MAX + 1];
     size_t len;
@@ -477,7 +474,7 @@ void rewrite_cached_paths(struct arguswatch **watch, const char *oldpathpf, cons
  * @param path
  * @return
  */
-int remove_subtree(struct arguswatch **watch, char *path) {
+int remove_subtree(struct arguswatch **watch, const char *const path) {
     size_t len = strlen(path);
     int i, cnt = 0;
     // The argument we receive might be a pointer to a path string that is

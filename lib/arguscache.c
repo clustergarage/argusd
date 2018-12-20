@@ -51,8 +51,6 @@ void clear_watch(struct arguswatch **watch) {
     for (i = 0; i < (*watch)->pathc; ++i) {
         free((*watch)->paths[i]);
     }
-    //free((*watch)->wd);
-    //free((*watch)->paths);
     (*watch)->pathc = 0;
 }
 
@@ -126,7 +124,7 @@ out_increaseloop:
  * @param watch
  * @param index
  */
-void remove_item_from_cache(struct arguswatch **watch, int const index) {
+static void remove_item_from_cache(struct arguswatch **watch, const int index) {
     int i;
     for (i = index; i < (*watch)->pathc - 1; ++i) {
         (*watch)->wd[i] = (*watch)->wd[i + 1];
@@ -146,13 +144,13 @@ void remove_item_from_cache(struct arguswatch **watch, int const index) {
  * @param wd
  * @return
  */
-int find_watch(const struct arguswatch *watch, const int wd) {
+int find_watch(const struct arguswatch *const watch, const int wd) {
     int i;
     if (watch->slot == -1) {
         return -1;
     }
-    for (i = 0; i < wlcache[watch->slot]->pathc; ++i) {
-        if (wlcache[watch->slot]->wd[i] == wd) {
+    for (i = 0; i < watch->pathc; ++i) {
+        if (watch->wd[i] == wd) {
             return i;
         }
     }
@@ -166,7 +164,7 @@ int find_watch(const struct arguswatch *watch, const int wd) {
  * @param wd
  * @return
  */
-int find_watch_checked(const struct arguswatch *watch, const int wd) {
+int find_watch_checked(const struct arguswatch *const watch, const int wd) {
     int slot = find_watch(watch, wd);
     if (slot > -1) {
         return slot;
@@ -198,7 +196,7 @@ void mark_cache_slot_empty(const int slot) {
  *
  * @return
  */
-int find_empty_cache_slot() {
+static int find_empty_cache_slot() {
     int i, len;
     for (i = 0; i < wlcachec; ++i) {
         if (wlcache[i]->slot == -1) {
@@ -244,14 +242,14 @@ void add_watch_to_cache(struct arguswatch **watch) {
  * @param path
  * @return
  */
-int path_name_to_cache_slot(const struct arguswatch *watch, const char *path) {
+int path_name_to_cache_slot(const struct arguswatch *const watch, const char *const path) {
     int i;
     if (watch->slot == -1 ||
-        wlcache[watch->slot]->pathc == -1) {
+        watch->pathc == -1) {
         return -1;
     }
-    for (i = 0; i < wlcache[watch->slot]->pathc; ++i) {
-        if (strcmp(wlcache[watch->slot]->paths[i], path) == 0) {
+    for (i = 0; i < watch->pathc; ++i) {
+        if (strcmp(watch->paths[i], path) == 0) {
             return i;
         }
     }
@@ -266,7 +264,7 @@ int path_name_to_cache_slot(const struct arguswatch *watch, const char *path) {
  * @param wd
  * @return
  */
-char *wd_to_path_name(const struct arguswatch *watch, const int wd) {
+const char *wd_to_path_name(const struct arguswatch *const watch, const int wd) {
     int i;
     for (i = 0; i < watch->pathc; ++i) {
         if (watch->wd[i] == wd) {
@@ -274,25 +272,4 @@ char *wd_to_path_name(const struct arguswatch *watch, const int wd) {
         }
     }
     return "";
-}
-
-/**
- * Return the cache slot that corresponds to the watch descriptor `wd` or -1 if
- * the watch descriptor is not in the cache.
- *
- * @param watch
- * @param wd
- * @return
- */
-int wd_to_cache_slot(const struct arguswatch *watch, const int wd) {
-    int i;
-    if (watch->slot == -1) {
-        return -1;
-    }
-    for (i = 0; i < wlcache[watch->slot]->pathc; ++i) {
-        if (wlcache[watch->slot]->wd[i] == wd) {
-            return i;
-        }
-    }
-    return -1;
 }

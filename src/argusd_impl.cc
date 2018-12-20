@@ -194,7 +194,7 @@ grpc::Status ArgusdImpl::RecordMetrics(grpc::ServerContext *context [[maybe_unus
  * @param request
  * @return
  */
-std::vector<int> ArgusdImpl::getPidsFromRequest(std::shared_ptr<argus::ArgusdConfig> request) {
+std::vector<int> ArgusdImpl::getPidsFromRequest(std::shared_ptr<argus::ArgusdConfig> request) const {
     std::vector<int> pids;
     std::for_each(request->cid().cbegin(), request->cid().cend(), [&](std::string cid) {
         std::string runtime = clustergarage::container::Util::findContainerRuntime(cid);
@@ -214,7 +214,7 @@ std::vector<int> ArgusdImpl::getPidsFromRequest(std::shared_ptr<argus::ArgusdCon
  * @param pids
  * @return
  */
-std::shared_ptr<argus::ArgusdHandle> ArgusdImpl::findArgusdWatcherByPids(const std::string nodeName, const std::vector<int> pids) {
+std::shared_ptr<argus::ArgusdHandle> ArgusdImpl::findArgusdWatcherByPids(const std::string nodeName, const std::vector<int> pids) const {
     auto it = find_if(watchers_.cbegin(), watchers_.cend(), [&](std::shared_ptr<argus::ArgusdHandle> watcher) {
         bool foundPid = false;
         for (const auto &pid : pids) {
@@ -239,7 +239,7 @@ std::shared_ptr<argus::ArgusdHandle> ArgusdImpl::findArgusdWatcherByPids(const s
  * @param subject
  * @return
  */
-char **ArgusdImpl::getPathArrayFromSubject(const int pid, std::shared_ptr<argus::ArgusWatcherSubject> subject) {
+char **ArgusdImpl::getPathArrayFromSubject(const int pid, std::shared_ptr<argus::ArgusWatcherSubject> subject) const {
     std::vector<std::string> pathvec;
     std::for_each(subject->path().cbegin(), subject->path().cend(), [&](std::string path) {
         std::stringstream ss;
@@ -263,7 +263,7 @@ char **ArgusdImpl::getPathArrayFromSubject(const int pid, std::shared_ptr<argus:
  * @param subject
  * @return
  */
-char **ArgusdImpl::getIgnoreArrayFromSubject(std::shared_ptr<argus::ArgusWatcherSubject> subject) {
+char **ArgusdImpl::getIgnoreArrayFromSubject(std::shared_ptr<argus::ArgusWatcherSubject> subject) const {
     char **patharr = new char *[subject->ignore_size()];
     size_t i = 0;
     std::for_each(subject->ignore().cbegin(), subject->ignore().cend(), [&](std::string path) {
@@ -280,7 +280,7 @@ char **ArgusdImpl::getIgnoreArrayFromSubject(std::shared_ptr<argus::ArgusWatcher
  * @param subject
  * @return
  */
-std::string ArgusdImpl::getTagListFromSubject(std::shared_ptr<argus::ArgusWatcherSubject> subject) {
+std::string ArgusdImpl::getTagListFromSubject(std::shared_ptr<argus::ArgusWatcherSubject> subject) const {
     std::string tags;
     for (const auto &tag : subject->tags()) {
         if (!tags.empty()) {
@@ -298,7 +298,7 @@ std::string ArgusdImpl::getTagListFromSubject(std::shared_ptr<argus::ArgusWatche
  * @param subject
  * @return
  */
-uint32_t ArgusdImpl::getEventMaskFromSubject(std::shared_ptr<argus::ArgusWatcherSubject> subject) {
+uint32_t ArgusdImpl::getEventMaskFromSubject(std::shared_ptr<argus::ArgusWatcherSubject> subject) const {
     uint32_t mask = 0;
     std::for_each(subject->event().cbegin(), subject->event().cend(), [&](std::string event) {
         const char *evt = event.c_str();
@@ -349,16 +349,17 @@ void ArgusdImpl::createInotifyWatcher(const std::string watcherName, const std::
     }
     eventProcessfds->Add(processfd);
 
-    std::packaged_task<int(char *, int, int, char *, char *, unsigned int, char **, unsigned int, char **, uint32_t,
-        bool, bool, int, bool, int, char *, char *, void(struct arguswatch_event *))> task(start_inotify_watcher);
+    std::packaged_task<int(const char *, const char *, const char *, int, int, unsigned int, const char **,
+        unsigned int, const char **, uint32_t, bool, bool, int, bool, int, const char *, const char *,
+        arguswatch_logfn)> task(start_inotify_watcher);
     std::shared_future<int> result(task.get_future());
     std::thread taskThread(std::move(task),
         convertStringToCString(watcherName),
-        pid, sid,
         convertStringToCString(nodeName),
         convertStringToCString(podName),
-        subject->path_size(), getPathArrayFromSubject(pid, subject),
-        subject->ignore_size(), getIgnoreArrayFromSubject(subject),
+        pid, sid,
+        subject->path_size(), const_cast<const char **>(getPathArrayFromSubject(pid, subject)),
+        subject->ignore_size(), const_cast<const char **>(getIgnoreArrayFromSubject(subject)),
         getEventMaskFromSubject(subject),
         subject->onlydir(),
         subject->recursive(), subject->maxdepth(),
@@ -393,10 +394,10 @@ void ArgusdImpl::createInotifyWatcher(const std::string watcherName, const std::
  *
  * @param watcher
  */
-void ArgusdImpl::sendKillSignalToWatcher(std::shared_ptr<argus::ArgusdHandle> watcher) {
+void ArgusdImpl::sendKillSignalToWatcher(std::shared_ptr<argus::ArgusdHandle> watcher) const {
     // Kill existing watcher polls.
     std::for_each(watcher->processeventfd().cbegin(), watcher->processeventfd().cend(), [&](const int processfd) {
-        send_watcher_kill_signal(processfd);
+        send_watcher_kill_signal(&processfd);
     });
 }
 
@@ -407,7 +408,7 @@ void ArgusdImpl::sendKillSignalToWatcher(std::shared_ptr<argus::ArgusdHandle> wa
  * @param eventProcessfds
  * @param processfd
  */
-void ArgusdImpl::eraseEventProcessfd(google::protobuf::RepeatedField<google::protobuf::int32> *eventProcessfds, const int processfd) {
+void ArgusdImpl::eraseEventProcessfd(google::protobuf::RepeatedField<google::protobuf::int32> *eventProcessfds, const int processfd) const {
     if (eventProcessfds->empty()) {
        return;
     }
@@ -423,7 +424,7 @@ void ArgusdImpl::eraseEventProcessfd(google::protobuf::RepeatedField<google::pro
 #ifdef __cplusplus
 extern "C" {
 #endif
-void logArgusWatchEvent(struct arguswatch_event *awevent) {
+const void logArgusWatchEvent(struct arguswatch_event *awevent) {
     /**
      * Default logging format.
      *
