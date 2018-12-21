@@ -26,12 +26,15 @@
 #include <errno.h>
 #include <ftw.h>
 #include <limits.h>
-#include <poll.h>
+//#include <poll.h>
+#include <pthread.h>
 #include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/epoll.h>
+#include <sys/eventfd.h>
 #include <sys/inotify.h>
 #include <unistd.h>
 
@@ -39,6 +42,8 @@
 #include "arguscache.h"
 #include "argustree.h"
 #include "argusutil.h"
+
+pthread_mutex_t lock;
 
 /**
  * When the cache is in an unrecoverable state, we discard the current
@@ -50,7 +55,7 @@
  * @param watch
  * @return
  */
-static int reinitialize(struct arguswatch **watch) {
+static void reinitialize(struct arguswatch **watch) {
     int fd, slot;
     bool rebuild = (*watch)->fd != EOF;
 
@@ -63,23 +68,35 @@ static int reinitialize(struct arguswatch **watch) {
 #endif
     }
 
-    fd = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
+    pthread_mutex_lock(&lock);
+    fd = inotify_init1(IN_CLOEXEC | IN_NONBLOCK);
     if (fd == EOF) {
 #if DEBUG
         perror("inotify_init1");
 #endif
-        return -1;
+        return;
     }
     (*watch)->fd = fd;
 #if DEBUG
     printf("  new fd = %d\n", fd);
     fflush(stdout);
 #endif
+    pthread_mutex_unlock(&lock);
 
     // Free watch cache.
     clear_watch(watch);
     // Begin traversing tree, or non-recursive directories.
     watch_subtree(watch);
+
+    pthread_mutex_lock(&lock);
+    (*watch)->processevtfd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK | EFD_SEMAPHORE);
+    printf(" !!! %s :: processfd => %d\n", __func__, (*watch)->processevtfd);
+    if ((*watch)->processevtfd == EOF) {
+#if DEBUG || 1
+        perror("eventfd");
+#endif
+    }
+    pthread_mutex_unlock(&lock);
 
     slot = find_cached_slot((*watch)->pid, (*watch)->sid);
     if (slot == -1) {
@@ -98,14 +115,11 @@ static int reinitialize(struct arguswatch **watch) {
     // containers in a single pod that don't have a path on the filesystem that
     // we specified to watch.
     check_cache_consistency(watch);
-
-    return fd;
 }
 
 /**
  * Process the next `inotify` event in the buffer specified by `event` and
- * `len`. In most cases, a single event is consumed, but if there is an
- * IN_MOVED_FROM+IN_MOVED_TO pair that share a cookie value, both events are
+ * `len`. In most cases, a single event is consumed, but if there is an * IN_MOVED_FROM+IN_MOVED_TO pair that share a cookie value, both events are
  * consumed returns the number of bytes in the event(s) consumed from `event`.
  *
  * @param watch
@@ -227,8 +241,8 @@ static size_t process_next_inotify_event(struct arguswatch **watch, const struct
 #endif
         if (find_root_path(*watch, path) != NULL) {
             remove_root_path(watch, path);
-            check_cache_consistency(watch);
         }
+        check_cache_consistency(watch);
         // ... no need to remove the watch, that happens automatically.
     } else if ((event->mask & (IN_MOVED_FROM | IN_ISDIR)) == (IN_MOVED_FROM | IN_ISDIR)) {
         /**
@@ -377,7 +391,7 @@ static size_t process_next_inotify_event(struct arguswatch **watch, const struct
         printf("filesystem unmounted: %s\n", path);
         fflush(stdout);
 #endif
-        send_watcher_kill_signal(&(*watch)->processevtfd);
+        send_watcher_kill_signal((*watch)->pid);
         mark_cache_slot_empty((*watch)->slot);
         // No need to remove the watch; that happens automatically.
     } else if (event->mask & IN_MOVE_SELF &&
@@ -547,6 +561,11 @@ static void process_inotify_events(struct arguswatch **watch, arguswatch_logfn l
         // Advance to next event.
         event = IN_EVENT_NEXT(event, len, evtlen);
     }
+
+#if 0
+    printf(" === %s => DUMP_CACHE \n", __func__);
+    DUMP_CACHE(*watch);
+#endif
 }
 
 /**
@@ -579,21 +598,14 @@ static void process_inotify_events(struct arguswatch **watch, arguswatch_logfn l
  */
 int start_inotify_watcher(const char *name, const char *nodename, const char *podname, const int pid, const int sid,
     const unsigned int pathc, const char *paths[], const unsigned int ignorec, const char *ignores[], const uint32_t mask,
-    const bool onlydir, const bool recursive, const int maxdepth, const bool followmove, const int processevtfd,
+    const bool onlydir, const bool recursive, const int maxdepth, const bool followmove, /*const int processevtfd,*/
     const char *tags, const char *logformat, arguswatch_logfn logfn) {
 
-    int fd, pollc;
-    nfds_t nfds;
-    struct pollfd fds[2];
-    sigset_t sigmask;
-    sigemptyset(&sigmask);
-    sigaddset(&sigmask, SIGCHLD);
-
+    struct arguswatch *watch;
     // To keep this function idempotent we need to handle both existing
     // arguswatch configuration updates as well as new ones.
     // `inotify_add_watch` will also handle updates properly if a wd exists for
     // the supplied path.
-    struct arguswatch *watch;
     int slot = find_cached_slot(pid, sid);
     if (slot > -1 &&
         wlcache[slot] != NULL) {
@@ -609,17 +621,18 @@ int start_inotify_watcher(const char *name, const char *nodename, const char *po
             .pid = pid,
             .sid = sid,
             .slot = -1,
-            .fd = EOF,
-            .processevtfd = processevtfd
+            .fd = EOF
         };
     }
 
-    // Assign or update the passed-in watch parameters that can possibly change.
+    // Assign or update the passed-in watch parameters that can possibly change
+    // between recreation of an existing watcher.
     watch->rootpathc = pathc;
     watch->rootpaths = (char **)paths;
     watch->ignorec = ignorec;
     watch->ignores = (char **)ignores;
     watch->event_mask = mask;
+    //watch->processevtfd = processevtfd;
     watch->only_dir = onlydir;
     watch->recursive = recursive;
     watch->max_depth = maxdepth;
@@ -630,65 +643,126 @@ int start_inotify_watcher(const char *name, const char *nodename, const char *po
     // Validate root paths with `stat` and for duplicates.
     validate_root_paths(watch);
 
-#if DEBUG
+#if DEBUG || 1
     printf("  Listening for events (pid = %d, sid = %d)\n", pid, sid);
     fflush(stdout);
 #endif
 
     // Create an `inotify` instance and populate it with entries for paths.
-    fd = reinitialize(&watch);
-    if (fd == EOF) {
+    reinitialize(&watch);
+    if (watch->fd == EOF) {
+#if DEBUG || 1
+        perror("reinitialize");
+#endif
         goto out;
     }
 
-    // Prepare for polling.
-    nfds = 2;
+    // @TODO: document this
+
+    struct epoll_event epollevt[2];
+    // Buffer where events are returned.
+    struct epoll_event *epollevts = calloc(EPOLL_MAX_EVENTS, sizeof(struct epoll_event));
+    uint32_t eflags = EPOLLIN | EPOLLET | EPOLLERR | EPOLLHUP;
+    int efd, nfds, i;
+    sigset_t sigmask;
+    sigemptyset(&sigmask);
+    sigaddset(&sigmask, SIGCHLD);
+    sigaddset(&sigmask, SIGHUP);
+
+    pthread_mutex_lock(&lock);
+    efd = epoll_create1(EPOLL_CLOEXEC);
+    if (efd == EOF) {
+#if DEBUG || 1
+        perror("epoll_create");
+#endif
+        goto out;
+    }
+    pthread_mutex_unlock(&lock);
+
     // `inotify` input.
-    fds[0].fd = fd;
-    fds[0].events = POLLIN;
+    epollevt[0].data.fd = watch->fd;
+    epollevt[0].events = eflags;
+    if (epoll_ctl(efd, EPOLL_CTL_ADD, watch->fd, &epollevt[0]) == EOF) {
+#if DEBUG || 1
+        printf(" epoll_ctl [fd] => %d\n", watch->fd);
+        perror("epoll_ctl");
+#endif
+    }
     // Anonymous pipe for manual kill.
-    fds[1].fd = processevtfd;
-    fds[1].events = POLLIN;
+    epollevt[1].data.fd = watch->processevtfd;
+    epollevt[1].events = eflags;
+    if (epoll_ctl(efd, EPOLL_CTL_ADD, watch->processevtfd, &epollevt[1]) == EOF) {
+#if DEBUG || 1
+        printf(" epoll_ctl [processevtfd] => %d\n", watch->processevtfd);
+        perror("epoll_ctl");
+#endif
+    }
+
+    printf(" ### epollfd = %d; fd = %d; processeventfd = %d\n", efd, watch->fd, watch->processevtfd);
+    fflush(stdout);
 
     // Wait for events.
     for (;;) {
-        pollc = ppoll(fds, nfds, NULL, &sigmask);
-        if (pollc == EOF) {
+        nfds = epoll_pwait(efd, epollevts, EPOLL_MAX_EVENTS, -1, &sigmask);
+        //nfds = epoll_wait(efd, epollevts, EPOLL_MAX_EVENTS, -1);
+        if (nfds == EOF) {
             if (errno == EINTR) {
                 continue;
             }
-#if DEBUG
-            perror("ppoll");
+#if DEBUG || 1
+            perror("epoll_wait");
 #endif
             goto out;
         }
 
-        if (pollc > 0) {
-            if (fds[0].revents & POLLIN) {
-                // `inotify` events are available.
-                process_inotify_events(&watch, logfn);
+        for (i = 0; i < nfds; ++i) {
+            if ((epollevts[i].events & EPOLLERR) ||
+                (epollevts[i].events & EPOLLHUP) ||
+                (!(epollevts[i].events & EPOLLIN))) {
+#if DEBUG || 1
+                fprintf(stderr, "epoll error\n");
+#endif
+                printf(" === !!! === close [epollevts[i].data.fd] => %d\n", epollevts[i].data.fd);
+                pthread_mutex_lock(&lock);
+                close(epollevts[i].data.fd);
+                pthread_mutex_unlock(&lock);
+                continue;
             }
 
-            if (fds[1].revents & POLLIN) {
+            if (epollevts[i].data.fd == watch->fd) {
+                // `inotify` events are available.
+                process_inotify_events(&watch, logfn);
+            } else if (epollevts[i].data.fd == watch->processevtfd) {
                 // Anonymous pipe events are available.
                 uint64_t value;
-                ssize_t len = read(fds[1].fd, &value, sizeof(uint64_t));
+                ssize_t len = read(epollevts[i].data.fd, &value, sizeof(uint64_t));
+                printf(" ### processevtfd = %d (value & ARGUSNOTIFY_KILL) = %d ### \n", watch->processevtfd, (bool)(value & ARGUSNOTIFY_KILL));
                 if (len != EOF &&
                     (value & ARGUSNOTIFY_KILL)) {
-                    break;
+                    goto out;
                 }
             }
         }
     }
 
 out:
-#if DEBUG
+#if DEBUG || 1
     printf("  Listening for events stopped (pid = %d, sid = %d)\n", pid, sid);
     fflush(stdout);
 #endif
 
+    pthread_mutex_lock(&lock);
     // Close `inotify` file descriptor.
-    close(fd);
+    close(watch->fd);
+    // Close `eventfd` file descriptor.
+    printf(" close [processevtfd] => %d\n", watch->processevtfd);
+    close(watch->processevtfd);
+    // Close `epoll` file descriptor.
+    close(efd);
+    pthread_mutex_unlock(&lock);
+
+    // Free epoll event memory.
+    free(epollevts);
     // Free watch cache.
     clear_watch(&watch);
 
@@ -696,16 +770,24 @@ out:
 }
 
 /**
- * Sends the custom kill signal to break out of the `ppoll` loop that is
+ * Sends the custom kill signal to break out of the `epoll` loop that is
  * listening for active `inotify` watch events.
  *
  * @param processfd
  */
-void send_watcher_kill_signal(const int *const processfd) {
-    uint64_t value = ARGUSNOTIFY_KILL;
-    if (write(*processfd, &value, sizeof(value)) == EOF) {
-#if DEBUG
-        perror("write");
+void send_watcher_kill_signal(const int pid) {
+    int i;
+    for (i = 0; i < wlcachec; ++i) {
+        if (wlcache[i]->pid == pid) {
+            uint64_t value = ARGUSNOTIFY_KILL;
+            if (write(wlcache[i]->processevtfd, &value, sizeof(value)) == EOF) {
+#if DEBUG || 1
+                printf(" write [processfd] => %d\n", wlcache[i]->processevtfd);
+                perror("write");
 #endif
+                // Close `eventfd` file descriptor.
+                //close(wlcache[i]->processevtfd);
+            }
+        }
     }
 }

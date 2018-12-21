@@ -43,6 +43,34 @@
     snprintf(fp, sizeof(fp), "%s/%s", dir, file); \
 } while(0)
 
+#define DUMP_CACHE(watch) do {                                                           \
+    printf("  $$$$ watch = %p:\n", (void *)(watch));                                     \
+    printf("    $$   pid = %d; sid = %d\n", (watch)->pid, (watch)->sid);                 \
+    printf("    $$   slot = %d\n", (watch)->slot);                                       \
+    printf("    $$   fd = %d; processevtfd = %d\n", (watch)->fd, (watch)->processevtfd), \
+    printf("    $$   rootpathc = %d\n", (watch)->rootpathc);                             \
+    for (int i = 0; i < (watch)->rootpathc; ++i) {                                       \
+        printf("     $     rootpaths[%d] = %s\n", i, (watch)->rootpaths[i]);             \
+    }                                                                                    \
+    printf("    $$   ignorec = %d\n", (watch)->ignorec);                                 \
+    for (int i = 0; i < (watch)->ignorec; ++i) {                                         \
+        printf("     $     ignore[%d] = %s\n", i, (watch)->ignores[i]);                  \
+    }                                                                                    \
+    printf("    $$   pathc = %d\n", (watch)->pathc);                                     \
+    for (int i = 0; i < (watch)->pathc; ++i) {                                           \
+        printf("     $     [%d] wd = %d; path = %s\n", i, (watch)->wd[i],                \
+            (watch)->paths[i]);                                                          \
+    }                                                                                    \
+    printf("    $$   event_mask = %d\n", (watch)->event_mask);                           \
+    printf("    $$   only_dir = %d\n", (watch)->only_dir);                               \
+    printf("    $$   recursive = %d\n", (watch)->recursive);                             \
+    if ((watch)->recursive) {                                                            \
+        printf("    $$     max_depth = %d\n", (watch)->max_depth);                       \
+    }                                                                                    \
+    printf("    $$   follow_move = %d\n", (watch)->follow_move);                         \
+    fflush(stdout);                                                                      \
+} while(0)
+
 struct arguswatch {
     const char *name;                 // Name of ArgusWatcher.
     const char *node_name, *pod_name; // Name of node, pod in which process is running.

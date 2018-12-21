@@ -81,13 +81,14 @@ grpc::Status ArgusdImpl::CreateWatch(grpc::ServerContext *context [[maybe_unused
     if (watcher != nullptr) {
         // Stop existing watcher polling.
         sendKillSignalToWatcher(watcher);
-
+#if 0
         // Wait for all processeventfd to be cleared. This indicates that the
         // inotify threads are finished and cleaned up.
         std::unique_lock<std::mutex> lock(mux_);
         cv_.wait_until(lock, std::chrono::system_clock::now() + std::chrono::seconds(2), [=] {
             return watcher->processeventfd().empty();
         });
+#endif
     }
 
     response->set_nodename(request->nodename().c_str());
@@ -96,6 +97,7 @@ grpc::Status ArgusdImpl::CreateWatch(grpc::ServerContext *context [[maybe_unused
     for_each(pids.cbegin(), pids.cend(), [&](const int pid) {
         int i = 0;
         for_each(request->subject().cbegin(), request->subject().cend(), [&](const argus::ArgusWatcherSubject subject) {
+            LOG(WARNING) << "createInotifyWatcher => " << pid << " , " << i;
             // @TODO: Check if any watchers are started, if not, don't add to response.
             createInotifyWatcher(request->name(), response->nodename(), response->podname(),
                 std::make_shared<argus::ArgusWatcherSubject>(subject), pid, i,
@@ -109,9 +111,11 @@ grpc::Status ArgusdImpl::CreateWatch(grpc::ServerContext *context [[maybe_unused
         // Store new watcher.
         watchers_.push_back(std::make_shared<argus::ArgusdHandle>(*response));
     } else {
+#if 0
         std::for_each(response->processeventfd().cbegin(), response->processeventfd().cend(), [&](const int processfd) {
             watcher->add_processeventfd(processfd);
         });
+#endif
     }
 
     return grpc::Status::OK;
@@ -342,15 +346,17 @@ void ArgusdImpl::createInotifyWatcher(const std::string watcherName, const std::
     std::shared_ptr<argus::ArgusWatcherSubject> subject, const int pid, const int sid,
     google::protobuf::RepeatedField<google::protobuf::int32> *eventProcessfds, const std::string logFormat) {
 
+#if 0
     // Create anonymous pipe to communicate with `inotify` watcher.
-    const int processfd = eventfd(0, EFD_CLOEXEC);
+    const int processfd = eventfd(0, /*EFD_CLOEXEC | */EFD_NONBLOCK/* | EFD_SEMAPHORE*/);
     if (processfd == EOF) {
         return;
     }
     eventProcessfds->Add(processfd);
+#endif
 
     std::packaged_task<int(const char *, const char *, const char *, int, int, unsigned int, const char **,
-        unsigned int, const char **, uint32_t, bool, bool, int, bool, int, const char *, const char *,
+        unsigned int, const char **, uint32_t, bool, bool, int, bool, /*int, */const char *, const char *,
         arguswatch_logfn)> task(start_inotify_watcher);
     std::shared_future<int> result(task.get_future());
     std::thread taskThread(std::move(task),
@@ -364,13 +370,14 @@ void ArgusdImpl::createInotifyWatcher(const std::string watcherName, const std::
         subject->onlydir(),
         subject->recursive(), subject->maxdepth(),
         subject->followmove(),
-        processfd,
+        //processfd,
         convertStringToCString(getTagListFromSubject(subject)),
         convertStringToCString(logFormat),
         logArgusWatchEvent);
     // Start as daemon process.
     taskThread.detach();
 
+#if 0
     // Once the argusnotify task begins we listen for a return status in a
     // separate, cleanup thread. When this result comes back, we do any
     // necessary cleanup here, such as destroy our anonymous pipe into the
@@ -378,15 +385,20 @@ void ArgusdImpl::createInotifyWatcher(const std::string watcherName, const std::
     std::thread cleanupThread([=](std::shared_future<int> res) mutable {
         res.wait();
         if (res.valid()) {
+#if 0
             auto watcher = findArgusdWatcherByPids(nodeName, std::vector<int>{pid});
             if (watcher != nullptr) {
+                LOG(WARNING) << "][ cleanup thread ][ eraseEventProcessfd(len = " << watcher->processeventfd_size() << ") => " << processfd;
                 eraseEventProcessfd(watcher->mutable_processeventfd(), processfd);
+                LOG(WARNING) << "][ cleanup thread ][ eraseEventProcessfd(len = " << watcher->processeventfd_size() << ")";
                 // Notify the `condition_variable` of changes.
                 cv_.notify_one();
             }
+#endif
         }
     }, result);
     cleanupThread.detach();
+#endif
 }
 
 /**
@@ -396,9 +408,16 @@ void ArgusdImpl::createInotifyWatcher(const std::string watcherName, const std::
  */
 void ArgusdImpl::sendKillSignalToWatcher(std::shared_ptr<argus::ArgusdHandle> watcher) const {
     // Kill existing watcher polls.
-    std::for_each(watcher->processeventfd().cbegin(), watcher->processeventfd().cend(), [&](const int processfd) {
-        send_watcher_kill_signal(&processfd);
+    std::for_each(watcher->pid().cbegin(), watcher->pid().cend(), [&](const int pid) {
+        send_watcher_kill_signal(pid);
     });
+#if 0
+    // Kill existing watcher polls.
+    std::for_each(watcher->processeventfd().cbegin(), watcher->processeventfd().cend(), [&](const int processfd) {
+        LOG(WARNING) << "][ sendKillSignalToWatcher(len = " << watcher->processeventfd_size() << ") => " << processfd;
+        send_watcher_kill_signal(/*&*/processfd);
+    });
+#endif
 }
 
 /**
@@ -469,6 +488,7 @@ const void logArgusWatchEvent(struct arguswatch_event *awevent) {
         LOG(WARNING) << "Malformed ArgusWatcher `.spec.logFormat`: \"" << e.what() << "\"";
     }
 
+#if 0
     if (kMetricsWriter != nullptr) {
         auto metric = std::make_shared<argus::ArgusdMetricsHandle>();
         metric->set_arguswatcher(awevent->watch->name);
@@ -480,6 +500,7 @@ const void logArgusWatchEvent(struct arguswatch_event *awevent) {
             // Broken stream.
         }
     }
+#endif
 }
 #ifdef __cplusplus
 }; // extern "C"

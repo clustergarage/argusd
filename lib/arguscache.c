@@ -49,7 +49,9 @@ void clear_watch(struct arguswatch **watch) {
     }
     // Free up dynamically-allocated memory for `wd` and `paths` arrays.
     for (i = 0; i < (*watch)->pathc; ++i) {
-        free((*watch)->paths[i]);
+        if ((*watch)->paths[i]) {
+            free((*watch)->paths[i]);
+        }
     }
     (*watch)->pathc = 0;
 }
@@ -244,8 +246,7 @@ void add_watch_to_cache(struct arguswatch **watch) {
  */
 int path_name_to_cache_slot(const struct arguswatch *const watch, const char *const path) {
     int i;
-    if (watch->slot == -1 ||
-        watch->pathc == -1) {
+    if (watch->slot == -1) {
         return -1;
     }
     for (i = 0; i < watch->pathc; ++i) {
