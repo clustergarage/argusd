@@ -79,8 +79,8 @@ grpc::Status ArgusdImpl::CreateWatch(grpc::ServerContext *context [[maybe_unused
     LOG(INFO) << (watcher == nullptr ? "Starting" : "Updating") << " `inotify` watcher ("
         << request->podname() << ":" << request->nodename() << ")";
     if (watcher != nullptr) {
+        // Reset done flag.
         done_ = false;
-
         // Stop existing watcher polling.
         sendKillSignalToWatcher(watcher);
 
@@ -332,15 +332,15 @@ uint32_t ArgusdImpl::getEventMaskFromSubject(std::shared_ptr<argus::ArgusWatcher
  * @param subject
  * @param pid
  * @param sid
- * @param slen
+ * @param subjectLen
  * @param logFormat
  */
 void ArgusdImpl::createInotifyWatcher(const std::string watcherName, const std::string nodeName, const std::string podName,
-    std::shared_ptr<argus::ArgusWatcherSubject> subject, const int pid, const int sid, const int slen,
+    std::shared_ptr<argus::ArgusWatcherSubject> subject, const int pid, const int sid, const int subjectLen,
     const std::string logFormat) {
 
     std::packaged_task<int(const char *, const char *, const char *, int, int, unsigned int, const char **,
-        unsigned int, const char **, uint32_t, bool, bool, int, bool, /*int, */const char *, const char *,
+        unsigned int, const char **, uint32_t, bool, bool, int, bool, const char *, const char *,
         arguswatch_logfn)> task(start_inotify_watcher);
     std::shared_future<int> result(task.get_future());
     std::thread taskThread(std::move(task),
@@ -368,7 +368,7 @@ void ArgusdImpl::createInotifyWatcher(const std::string watcherName, const std::
     std::thread cleanupThread([=](std::shared_future<int> res) mutable {
         res.wait();
         if (res.valid()) {
-            if (++cnt == slen) {
+            if (++cnt == subjectLen) {
                 done_ = true;
             }
             // Notify the `condition_variable` of changes.
@@ -439,7 +439,6 @@ const void logArgusWatchEvent(struct arguswatch_event *awevent) {
         LOG(WARNING) << "Malformed ArgusWatcher `.spec.logFormat`: \"" << e.what() << "\"";
     }
 
-#if 0
     if (kMetricsWriter != nullptr) {
         auto metric = std::make_shared<argus::ArgusdMetricsHandle>();
         metric->set_arguswatcher(awevent->watch->name);
@@ -451,7 +450,6 @@ const void logArgusWatchEvent(struct arguswatch_event *awevent) {
             // Broken stream.
         }
     }
-#endif
 }
 #ifdef __cplusplus
 }; // extern "C"

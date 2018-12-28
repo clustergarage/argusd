@@ -45,8 +45,8 @@
  * @param watch
  */
 void validate_root_paths(struct arguswatch *const watch) {
-    int i, j;
     struct stat sb;
+    int i, j;
 
     // Count the number of root paths and check that the paths are valid.
     for (i = 0; i < watch->rootpathc; ++i) {
@@ -68,8 +68,7 @@ void validate_root_paths(struct arguswatch *const watch) {
         }
     }
 
-    watch->rootstat = calloc(watch->rootpathc, sizeof(struct stat));
-    if (watch->rootstat == NULL) {
+    if ((watch->rootstat = calloc(watch->rootpathc, sizeof(struct stat))) == NULL) {
 #if DEBUG
         perror("calloc");
 #endif
@@ -148,13 +147,13 @@ static struct stat *find_root_stat(const struct arguswatch *const watch, const c
  * @param watch
  * @param path
  */
-void remove_root_path(struct arguswatch **/*restrict*/ watch, const char *const path) {
-    char **p = find_root_path(*watch, path);
+void remove_root_path(struct arguswatch **watch, const char *const path) {
+    char **p;
 #if DEBUG
     printf("%s: %s\n", __func__, path);
     fflush(stdout);
 #endif
-    if (p == NULL) {
+    if ((p = find_root_path(*watch, path)) == NULL) {
 #if DEBUG
         printf("%s: path not found!\n", __func__);
         fflush(stdout);
@@ -172,11 +171,25 @@ void remove_root_path(struct arguswatch **/*restrict*/ watch, const char *const 
     }
 }
 
-void find_replace_root_path(struct arguswatch **/*restrict*/ watch, const char *const path) {
+void find_replace_root_path(struct arguswatch **watch, const char *const path) {
     char procpath[PATH_MAX], foundpath[PATH_MAX], pidc[8];
-    char **p = find_root_path(*watch, path);
-    struct stat *rootstat = find_root_stat(*watch, path);
+    char **p;
+    struct stat *rootstat;
 
+    if ((p = find_root_path(*watch, path)) == NULL) {
+#if DEBUG
+        printf("%s: path not found!\n", __func__);
+        fflush(stdout);
+#endif
+        return;
+    }
+    if ((rootstat = find_root_stat(*watch, path)) == NULL) {
+#if DEBUG
+        printf("%s: root stat not found!\n", __func__);
+        fflush(stdout);
+#endif
+        return;
+    }
     snprintf(procpath, sizeof(procpath), "/proc/%d/root/.", (*watch)->pid);
     snprintf(pidc, sizeof(pidc), "%d", (*watch)->pid);
 
@@ -208,8 +221,7 @@ void find_replace_root_path(struct arguswatch **/*restrict*/ watch, const char *
         return;
     }
 
-    *p = realloc(*p, sizeof(foundpath) + 1);
-    if (*p == NULL) {
+    if ((*p = realloc(*p, sizeof(foundpath) + 1)) == NULL) {
 #if DEBUG
         perror("realloc");
 #endif
@@ -268,8 +280,9 @@ static bool should_ignore_path(const struct arguswatch *const watch, const char 
  * @param path
  * @return
  */
-static int watch_path(struct arguswatch **/*restrict*/ watch, const char *const path) {
+static int watch_path(struct arguswatch **watch, const char *const path) {
     int wd;
+    uint32_t flags;
 
     // Dont add non-directories unless directly specified by `rootpaths` and
     // `only_dir` flag is false.
@@ -279,7 +292,7 @@ static int watch_path(struct arguswatch **/*restrict*/ watch, const char *const 
 
     // We need to watch certain events at all times for keeping a consistent
     // view of the filesystem tree.
-    uint32_t flags = IN_CREATE | IN_MOVED_FROM | IN_MOVED_TO | IN_DELETE_SELF;
+    flags = IN_CREATE | IN_MOVED_FROM | IN_MOVED_TO | IN_DELETE_SELF;
     if ((*watch)->only_dir) {
         flags |= IN_ONLYDIR;
     }
@@ -288,8 +301,7 @@ static int watch_path(struct arguswatch **/*restrict*/ watch, const char *const 
     }
 
     // Make directories for events.
-    wd = inotify_add_watch((*watch)->fd, path, (*watch)->event_mask | flags);
-    if (wd == EOF) {
+    if ((wd = inotify_add_watch((*watch)->fd, path, (*watch)->event_mask | flags)) == EOF) {
         // By the time we come to create a watch, the directory might already
         // have been deleted or renamed, in which case we'll get an ENOENT
         // error. Log the error, but carry on execution. Other errors are
@@ -298,11 +310,7 @@ static int watch_path(struct arguswatch **/*restrict*/ watch, const char *const 
         fprintf(stderr, "inotify_add_watch: %s: %s\n", path, strerror(errno));
         perror("inotify_add_watch");
 #endif
-        if (errno == ENOENT) {
-            return 0;
-        } else {
-            return -1;
-        }
+        return (errno == ENOENT) ? 0 : -1;
     }
 
 #if DEBUG
@@ -313,8 +321,7 @@ static int watch_path(struct arguswatch **/*restrict*/ watch, const char *const 
     }
 #endif
 
-    (*watch)->wd = realloc((*watch)->wd, ((*watch)->pathc + 1) * sizeof(int));
-    if ((*watch)->wd == NULL) {
+    if (((*watch)->wd = realloc((*watch)->wd, ((*watch)->pathc + 1) * sizeof(int))) == NULL) {
 #if DEBUG
         perror("realloc");
 #endif
@@ -322,8 +329,7 @@ static int watch_path(struct arguswatch **/*restrict*/ watch, const char *const 
     }
     (*watch)->wd[(*watch)->pathc] = wd;
 
-    (*watch)->paths = realloc((*watch)->paths, ((*watch)->pathc + 1) * sizeof(char *));
-    if ((*watch)->paths == NULL) {
+    if (((*watch)->paths = realloc((*watch)->paths, ((*watch)->pathc + 1) * sizeof(char *))) == NULL) {
 #if DEBUG
         perror("realloc");
 #endif
@@ -347,7 +353,7 @@ static int watch_path(struct arguswatch **/*restrict*/ watch, const char *const 
  * @param path
  * @return
  */
-static int watch_path_recursive(struct arguswatch **/*restrict*/ watch, const char *const path) {
+static int watch_path_recursive(struct arguswatch **watch, const char *const path) {
     /**
      * Function called by `nftw` to traverse a directory tree that adds a watch
      * for each directory in the tree. Each successful call to this function
@@ -397,6 +403,7 @@ static int watch_path_recursive(struct arguswatch **/*restrict*/ watch, const ch
         fflush(stdout);
 #endif
     }
+
     return (*watch)->pathc;
 }
 
@@ -406,7 +413,7 @@ static int watch_path_recursive(struct arguswatch **/*restrict*/ watch, const ch
  *
  * @param watch
  */
-void watch_subtree(struct arguswatch **/*restrict*/ watch) {
+void watch_subtree(struct arguswatch **watch) {
     int i;
     for (i = 0; i < (*watch)->rootpathc; ++i) {
         if ((*watch)->recursive) {
@@ -433,7 +440,7 @@ void watch_subtree(struct arguswatch **/*restrict*/ watch) {
  * @param newpathpf
  * @param newname
  */
-void rewrite_cached_paths(struct arguswatch **/*restrict*/ watch, const char *const oldpathpf, const char *const oldname,
+void rewrite_cached_paths(struct arguswatch **watch, const char *const oldpathpf, const char *const oldname,
     const char *const newpathpf, const char *const newname) {
 
     char fullpath[PATH_MAX], newpf[PATH_MAX], newpath[PATH_MAX + 1];
@@ -474,7 +481,7 @@ void rewrite_cached_paths(struct arguswatch **/*restrict*/ watch, const char *co
  * @param path
  * @return
  */
-int remove_subtree(struct arguswatch **/*restrict*/ watch, const char *const path) {
+int remove_subtree(struct arguswatch **watch, const char *const path) {
     size_t len = strlen(path);
     int i, cnt = 0;
     // The argument we receive might be a pointer to a path string that is

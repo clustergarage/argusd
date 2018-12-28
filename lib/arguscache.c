@@ -41,7 +41,7 @@ int wlcachec = 0;
  *
  * @param watch
  */
-void clear_watch(struct arguswatch **/*restrict*/ watch) {
+void clear_watch(struct arguswatch **watch) {
     int i;
     if ((*watch)->slot == -1) {
         return;
@@ -53,6 +53,8 @@ void clear_watch(struct arguswatch **/*restrict*/ watch) {
         }
     }
     (*watch)->pathc = 0;
+    (*watch)->fd = EOF;
+    (*watch)->processevtfd = EOF;
 }
 
 /**
@@ -83,7 +85,7 @@ int find_cached_slot(const int pid, const int sid) {
  *
  * @param watch
  */
-void check_cache_consistency(struct arguswatch **/*restrict*/ watch) {
+void check_cache_consistency(struct arguswatch **watch) {
     struct stat sb;
     int i;
 
@@ -125,7 +127,7 @@ out_increaseloop:
  * @param watch
  * @param index
  */
-static void remove_item_from_cache(struct arguswatch **/*restrict*/ watch, const int index) {
+static void remove_item_from_cache(struct arguswatch **watch, const int index) {
     int i;
     for (i = index; i < (*watch)->pathc - 1; ++i) {
         (*watch)->wd[i] = (*watch)->wd[i + 1];
@@ -186,10 +188,15 @@ int find_watch_checked(const struct arguswatch *const watch, const int wd) {
  * @param slot
  */
 void mark_cache_slot_empty(const int slot) {
-    struct arguswatch *watch = calloc(1, sizeof(struct arguswatch));
+    struct arguswatch *watch;
+    if ((watch = calloc(1, sizeof(struct arguswatch))) == NULL) {
+#if DEBUG
+        perror("calloc");
+#endif
+        return;
+    }
     // Placeholder to pick open slot.
     watch->slot = -1;
-    //wlcache[slot] = &*watch;
     wlcache[slot] = watch;
 }
 
@@ -209,8 +216,7 @@ static int find_empty_cache_slot() {
     // No free slot found; resize cache.
     len = wlcachec + ALLOC_INC;
 
-    wlcache = realloc(wlcache, len * sizeof(struct arguswatch *));
-    if (wlcache == NULL) {
+    if ((wlcache = realloc(wlcache, len * sizeof(struct arguswatch *))) == NULL) {
 #if DEBUG
         perror("realloc");
 #endif
@@ -229,7 +235,7 @@ static int find_empty_cache_slot() {
  *
  * @param watch
  */
-void add_watch_to_cache(struct arguswatch **/*restrict*/ watch) {
+void add_watch_to_cache(struct arguswatch **watch) {
     int slot = find_empty_cache_slot();
     (*watch)->slot = slot;
     // Point this `wlcache` slot to `watch`.
