@@ -104,7 +104,7 @@ void check_cache_consistency(struct arguswatch **watch) {
             continue;
         }
 
-        if ((*watch)->only_dir &&
+        if (((*watch)->flags & AW_ONLYDIR) &&
             !S_ISDIR(sb.st_mode)) {
 #if DEBUG
             fprintf(stderr, "%s: %s is not a directory\n", __func__,

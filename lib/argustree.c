@@ -59,7 +59,7 @@ void validate_root_paths(struct arguswatch *const watch) {
             continue;
         }
 
-        if (watch->only_dir &&
+        if ((watch->flags & AW_ONLYDIR) &&
             !S_ISDIR(sb.st_mode)) {
 #if DEBUG
             fprintf(stderr, "'%s' is not a directory\n", watch->rootpaths[i]);
@@ -257,7 +257,7 @@ static bool should_ignore_path(const struct arguswatch *const watch, const char 
     }
 
     // If only watching for directories, ignore.
-    if (watch->only_dir) {
+    if (watch->flags & AW_ONLYDIR) {
         return true;
     }
     // Make sure path is directly in provided rootpaths.
@@ -285,7 +285,7 @@ static int watch_path(struct arguswatch **watch, const char *const path) {
     uint32_t flags;
 
     // Dont add non-directories unless directly specified by `rootpaths` and
-    // `only_dir` flag is false.
+    // `AW_ONLYDIR` flag is not set.
     if (should_ignore_path(*watch, path)) {
         return 0;
     }
@@ -293,7 +293,7 @@ static int watch_path(struct arguswatch **watch, const char *const path) {
     // We need to watch certain events at all times for keeping a consistent
     // view of the filesystem tree.
     flags = IN_CREATE | IN_MOVED_FROM | IN_MOVED_TO | IN_DELETE_SELF;
-    if ((*watch)->only_dir) {
+    if ((*watch)->flags & AW_ONLYDIR) {
         flags |= IN_ONLYDIR;
     }
     if (find_root_path(*watch, path) != NULL) {
@@ -368,7 +368,7 @@ static int watch_path_recursive(struct arguswatch **watch, const char *const pat
      */
     int traverse_tree(const char *path, const struct stat *sb, int tflag, struct FTW *ftwbuf) {
         int i;
-        if ((*watch)->only_dir &&
+        if (((*watch)->flags & AW_ONLYDIR) &&
             !S_ISDIR(sb->st_mode)) {
             // Ignore nondirectory files.
             return FTW_CONTINUE;
@@ -416,7 +416,7 @@ static int watch_path_recursive(struct arguswatch **watch, const char *const pat
 void watch_subtree(struct arguswatch **watch) {
     int i;
     for (i = 0; i < (*watch)->rootpathc; ++i) {
-        if ((*watch)->recursive) {
+        if ((*watch)->flags & AW_RECURSIVE) {
             watch_path_recursive(watch, (*watch)->rootpaths[i]);
         } else {
             watch_path(watch, (*watch)->rootpaths[i]);

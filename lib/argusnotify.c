@@ -223,7 +223,7 @@ static size_t process_next_inotify_event(struct arguswatch **watch, const struct
             wdslot = find_watch(*watch, event->wd);
             if (wdslot > -1 &&
                 // Only do this if watching recursively.
-                (*watch)->recursive) {
+                ((*watch)->flags & AW_RECURSIVE)) {
                 (*watch)->pathc = 0;
                 watch_subtree(watch);
                 wlcache[(*watch)->slot] = *watch;
@@ -405,7 +405,7 @@ static size_t process_next_inotify_event(struct arguswatch **watch, const struct
         fflush(stdout);
 #endif
 
-        if ((*watch)->follow_move) {
+        if ((*watch)->flags & AW_FOLLOW) {
             find_replace_root_path(watch, path);
             reinitialize(watch);
         } else {
@@ -575,10 +575,8 @@ static void process_inotify_events(struct arguswatch **watch, arguswatch_logfn l
  * @param ignorec
  * @param ignores
  * @param mask
- * @param onlydir
- * @param recursive
+ * @param flags
  * @param maxdepth
- * @param followmove
  * @param tags
  * @param logformat
  * @param logfn
@@ -586,8 +584,7 @@ static void process_inotify_events(struct arguswatch **watch, arguswatch_logfn l
  */
 int start_inotify_watcher(const char *name, const char *nodename, const char *podname, const int pid, const int sid,
     const unsigned int pathc, const char *paths[], const unsigned int ignorec, const char *ignores[], const uint32_t mask,
-    const bool onlydir, const bool recursive, const int maxdepth, const bool followmove, const char *tags,
-    const char *logformat, arguswatch_logfn logfn) {
+    const uint32_t flags, const int maxdepth, const char *tags, const char *logformat, arguswatch_logfn logfn) {
 
     struct arguswatch *watch;
     // To keep this function idempotent we need to handle both existing
@@ -620,10 +617,8 @@ int start_inotify_watcher(const char *name, const char *nodename, const char *po
     watch->ignorec = ignorec;
     watch->ignores = (char **)ignores;
     watch->event_mask = mask;
-    watch->only_dir = onlydir;
-    watch->recursive = recursive;
+    watch->flags = flags;
     watch->max_depth = maxdepth;
-    watch->follow_move = followmove;
     watch->tags = tags;
     watch->log_format = logformat;
 

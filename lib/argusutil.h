@@ -31,8 +31,12 @@
 #include <unistd.h>
 
 #ifndef DEBUG
-#define DEBUG 1
+#define DEBUG 0
 #endif
+
+#define AW_ONLYDIR   0x00000001
+#define AW_RECURSIVE 0x00000002
+#define AW_FOLLOW    0x00000004
 
 #define IN_EVENT_LEN (sizeof(struct inotify_event))
 #define IN_BUFFER_SIZE (IN_EVENT_LEN + NAME_MAX + 1)
@@ -85,12 +89,10 @@ struct arguswatch {
     unsigned int ignorec;             // Ignore path pattern count.
     unsigned int pathc;               // Cached path count, including recursive traversal.
     uint32_t event_mask;              // Event mask for `inotify`.
+    uint32_t flags;                   // Flags for ArgusWatcher.
     int pid, sid, slot;               // PID, Subject ID, `wlcache` slot.
     int fd, processevtfd;             // `inotify` file descriptor, anonymous pipe to send watch kill signal.
     int max_depth;                    // Max `nftw` depth to recurse through.
-    bool only_dir;                    // Flag to watch only directories.
-    bool recursive;                   // Flag to watch recursively.
-    bool follow_move;                 // Flag to follow move events and watch updated path.
 };
 
 struct arguswatch_event {

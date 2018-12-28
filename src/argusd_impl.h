@@ -50,6 +50,7 @@ private:
     char **getIgnoreArrayFromSubject(std::shared_ptr<argus::ArgusWatcherSubject> subject) const;
     std::string getTagListFromSubject(std::shared_ptr<argus::ArgusWatcherSubject> subject) const;
     uint32_t getEventMaskFromSubject(std::shared_ptr<argus::ArgusWatcherSubject> subject) const;
+    uint32_t getFlagsFromSubject(std::shared_ptr<argus::ArgusWatcherSubject> subject) const;
     void createInotifyWatcher(std::string watcherName, std::string nodeName, std::string podName,
         std::shared_ptr<argus::ArgusWatcherSubject> subject, int pid, int sid, int slen,
         std::string logFormat);

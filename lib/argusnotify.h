@@ -31,21 +31,16 @@
 
 #include "argusutil.h"
 
-#ifndef EPOLL_MAX_EVENTS
 #define EPOLL_MAX_EVENTS 32
-#endif
-
-#ifndef ARGUSNOTIFY_KILL
 #define ARGUSNOTIFY_KILL SIGKILL
-#endif
 
 static void reinitialize(struct arguswatch **watch);
 static size_t process_next_inotify_event(struct arguswatch **watch, const struct inotify_event *event, ssize_t len,
     bool first, arguswatch_logfn logfn);
 static void process_inotify_events(struct arguswatch **watch, arguswatch_logfn logfn);
 int start_inotify_watcher(const char *name, const char *nodename, const char *podname, int pid, int sid,
-    unsigned int pathc, const char *paths[], unsigned int ignorec, const char *ignores[], uint32_t mask, bool onlydir,
-    bool recursive, int maxdepth, bool followmove, const char *tags, const char *logformat, arguswatch_logfn logfn);
+    unsigned int pathc, const char *paths[], unsigned int ignorec, const char *ignores[], uint32_t mask, uint32_t flags,
+    int maxdepth, const char *tags, const char *logformat, arguswatch_logfn logfn);
 void send_watcher_kill_signal(int pid);
 
 #endif

@@ -86,7 +86,7 @@ grpc::Status ArgusdImpl::CreateWatch(grpc::ServerContext *context [[maybe_unused
         // Wait for all inotify threads to be finished and cleaned up.
         std::unique_lock<std::mutex> lock(mux_);
         cv_.wait_until(lock, std::chrono::system_clock::now() + std::chrono::seconds(2), [=] {
-            for (auto it : doneMap_) {
+            for (const auto &it : doneMap_) {
                 if (!it.second) {
                     return false;
                 }
@@ -327,6 +327,27 @@ uint32_t ArgusdImpl::getEventMaskFromSubject(std::shared_ptr<argus::ArgusWatcher
 }
 
 /**
+ * Returns a bitwise-OR combined flags given a subject. Options include
+ * `only_dir`, `recursive`, and `follow_move`.
+ *
+ * @param subject
+ * @return
+ */
+uint32_t ArgusdImpl::getFlagsFromSubject(std::shared_ptr<argus::ArgusWatcherSubject> subject) const {
+    uint32_t flags = 0;
+    if (subject->onlydir()) {
+        flags |= AW_ONLYDIR;
+    }
+    if (subject->recursive()) {
+        flags |= AW_RECURSIVE;
+    }
+    if (subject->followmove()) {
+        flags |= AW_FOLLOW;
+    }
+    return flags;
+}
+
+/**
  * Create child processes as background threads for spawning an argusnotify
  * watcher. We will create an anonymous pipe used to communicate to this
  * background thread later from this implementation; in the case of
@@ -348,7 +369,7 @@ void ArgusdImpl::createInotifyWatcher(const std::string watcherName, const std::
     const std::string logFormat) {
 
     std::packaged_task<int(const char *, const char *, const char *, int, int, unsigned int, const char **,
-        unsigned int, const char **, uint32_t, bool, bool, int, bool, const char *, const char *,
+        unsigned int, const char **, uint32_t, uint32_t, int, const char *, const char *,
         arguswatch_logfn)> task(start_inotify_watcher);
     std::shared_future<int> result(task.get_future());
     std::thread taskThread(std::move(task),
@@ -359,9 +380,8 @@ void ArgusdImpl::createInotifyWatcher(const std::string watcherName, const std::
         subject->path_size(), const_cast<const char **>(getPathArrayFromSubject(pid, subject)),
         subject->ignore_size(), const_cast<const char **>(getIgnoreArrayFromSubject(subject)),
         getEventMaskFromSubject(subject),
-        subject->onlydir(),
-        subject->recursive(), subject->maxdepth(),
-        subject->followmove(),
+        getFlagsFromSubject(subject),
+        subject->maxdepth(),
         convertStringToCString(getTagListFromSubject(subject)),
         convertStringToCString(logFormat),
         logArgusWatchEvent);
