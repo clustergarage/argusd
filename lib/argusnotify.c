@@ -26,7 +26,6 @@
 #include <errno.h>
 #include <ftw.h>
 #include <limits.h>
-//#include <poll.h>
 #include <pthread.h>
 #include <signal.h>
 #include <stdbool.h>
@@ -43,8 +42,6 @@
 #include "argustree.h"
 #include "argusutil.h"
 
-pthread_mutex_t lock;
-
 /**
  * When the cache is in an unrecoverable state, we discard the current
  * `inotify` file descriptor `oldfd` and create a new one (returned as the
@@ -55,7 +52,7 @@ pthread_mutex_t lock;
  * @param watch
  * @return
  */
-static void reinitialize(struct arguswatch **watch) {
+static void reinitialize(struct arguswatch **/*restrict */watch) {
     int fd, slot;
     bool rebuild = (*watch)->fd != EOF;
 
@@ -68,8 +65,9 @@ static void reinitialize(struct arguswatch **watch) {
 #endif
     }
 
-    pthread_mutex_lock(&lock);
     fd = inotify_init1(IN_CLOEXEC | IN_NONBLOCK);
+    printf(" !!! %s :: fd => %d\n", __func__, fd);
+    fflush(stdout);
     if (fd == EOF) {
 #if DEBUG
         perror("inotify_init1");
@@ -81,22 +79,20 @@ static void reinitialize(struct arguswatch **watch) {
     printf("  new fd = %d\n", fd);
     fflush(stdout);
 #endif
-    pthread_mutex_unlock(&lock);
 
     // Free watch cache.
     clear_watch(watch);
     // Begin traversing tree, or non-recursive directories.
     watch_subtree(watch);
 
-    pthread_mutex_lock(&lock);
     (*watch)->processevtfd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK | EFD_SEMAPHORE);
     printf(" !!! %s :: processfd => %d\n", __func__, (*watch)->processevtfd);
+    fflush(stdout);
     if ((*watch)->processevtfd == EOF) {
-#if DEBUG || 1
+#if DEBUG
         perror("eventfd");
 #endif
     }
-    pthread_mutex_unlock(&lock);
 
     slot = find_cached_slot((*watch)->pid, (*watch)->sid);
     if (slot == -1) {
@@ -129,8 +125,8 @@ static void reinitialize(struct arguswatch **watch) {
  * @param logfn
  * @return
  */
-static size_t process_next_inotify_event(struct arguswatch **watch, const struct inotify_event *event, const ssize_t len,
-    const bool first, arguswatch_logfn logfn) {
+static size_t process_next_inotify_event(struct arguswatch **/*restrict*/ watch, const struct inotify_event *event,
+    const ssize_t len, const bool first, arguswatch_logfn logfn) {
 
     const char *path = NULL;
     char fullpath[PATH_MAX + NAME_MAX + 1];
@@ -449,13 +445,12 @@ static void process_inotify_events(struct arguswatch **watch, arguswatch_logfn l
     int i;
     bool first = true;
     struct sigaction sa;
-
+    sigemptyset(&sa.sa_mask);
     void alarm_handler(int sig) {
         // Just interrupt `read`.
         return;
     }
     // SIGALRM handler is designed simply to interrupt `read`.
-    sigemptyset(&sa.sa_mask);
     sa.sa_handler = alarm_handler;
     sa.sa_flags = 0;
     if (sigaction(SIGALRM, &sa, NULL) == EOF) {
@@ -513,7 +508,7 @@ static void process_inotify_events(struct arguswatch **watch, arguswatch_logfn l
                 buf[i] = event[i];
             }
 
-            // Set a timeout for `read. Some rough testing suggests that a
+            // Set a timeout for `read`. Some rough testing suggests that a
             // 2ms timeout is sufficient to ensure that, in around 99.8% of
             // cases, we get the IN_MOVED_TO event (if there is one) that
             // matched an IN_MOVED_FROM event, even in a highly dynamic
@@ -590,7 +585,6 @@ static void process_inotify_events(struct arguswatch **watch, arguswatch_logfn l
  * @param recursive
  * @param maxdepth
  * @param followmove
- * @param processevtfd
  * @param tags
  * @param logformat
  * @param logfn
@@ -598,8 +592,8 @@ static void process_inotify_events(struct arguswatch **watch, arguswatch_logfn l
  */
 int start_inotify_watcher(const char *name, const char *nodename, const char *podname, const int pid, const int sid,
     const unsigned int pathc, const char *paths[], const unsigned int ignorec, const char *ignores[], const uint32_t mask,
-    const bool onlydir, const bool recursive, const int maxdepth, const bool followmove, /*const int processevtfd,*/
-    const char *tags, const char *logformat, arguswatch_logfn logfn) {
+    const bool onlydir, const bool recursive, const int maxdepth, const bool followmove, const char *tags,
+    const char *logformat, arguswatch_logfn logfn) {
 
     struct arguswatch *watch;
     // To keep this function idempotent we need to handle both existing
@@ -632,7 +626,6 @@ int start_inotify_watcher(const char *name, const char *nodename, const char *po
     watch->ignorec = ignorec;
     watch->ignores = (char **)ignores;
     watch->event_mask = mask;
-    //watch->processevtfd = processevtfd;
     watch->only_dir = onlydir;
     watch->recursive = recursive;
     watch->max_depth = maxdepth;
@@ -643,7 +636,7 @@ int start_inotify_watcher(const char *name, const char *nodename, const char *po
     // Validate root paths with `stat` and for duplicates.
     validate_root_paths(watch);
 
-#if DEBUG || 1
+#if DEBUG
     printf("  Listening for events (pid = %d, sid = %d)\n", pid, sid);
     fflush(stdout);
 #endif
@@ -651,40 +644,38 @@ int start_inotify_watcher(const char *name, const char *nodename, const char *po
     // Create an `inotify` instance and populate it with entries for paths.
     reinitialize(&watch);
     if (watch->fd == EOF) {
-#if DEBUG || 1
+#if DEBUG
         perror("reinitialize");
 #endif
         goto out;
     }
-
-    // @TODO: document this
 
     struct epoll_event epollevt[2];
     // Buffer where events are returned.
     struct epoll_event *epollevts = calloc(EPOLL_MAX_EVENTS, sizeof(struct epoll_event));
     uint32_t eflags = EPOLLIN | EPOLLET | EPOLLERR | EPOLLHUP;
     int efd, nfds, i;
-    sigset_t sigmask;
+    sigset_t sigmask, origmask;
     sigemptyset(&sigmask);
     sigaddset(&sigmask, SIGCHLD);
     sigaddset(&sigmask, SIGHUP);
+    pthread_sigmask(SIG_SETMASK, &sigmask, &origmask);
 
-    pthread_mutex_lock(&lock);
     efd = epoll_create1(EPOLL_CLOEXEC);
+    printf(" !!! %s :: efd => %d\n", __func__, efd);
+    fflush(stdout);
     if (efd == EOF) {
-#if DEBUG || 1
+#if DEBUG
         perror("epoll_create");
 #endif
         goto out;
     }
-    pthread_mutex_unlock(&lock);
 
     // `inotify` input.
     epollevt[0].data.fd = watch->fd;
     epollevt[0].events = eflags;
     if (epoll_ctl(efd, EPOLL_CTL_ADD, watch->fd, &epollevt[0]) == EOF) {
-#if DEBUG || 1
-        printf(" epoll_ctl [fd] => %d\n", watch->fd);
+#if DEBUG
         perror("epoll_ctl");
 #endif
     }
@@ -692,25 +683,25 @@ int start_inotify_watcher(const char *name, const char *nodename, const char *po
     epollevt[1].data.fd = watch->processevtfd;
     epollevt[1].events = eflags;
     if (epoll_ctl(efd, EPOLL_CTL_ADD, watch->processevtfd, &epollevt[1]) == EOF) {
-#if DEBUG || 1
-        printf(" epoll_ctl [processevtfd] => %d\n", watch->processevtfd);
+#if DEBUG
         perror("epoll_ctl");
 #endif
     }
 
-    printf(" ### epollfd = %d; fd = %d; processeventfd = %d\n", efd, watch->fd, watch->processevtfd);
+    printf(" ### fd = %d; processeventfd = %d; epollfd = %d\n", watch->fd, watch->processevtfd, efd);
     fflush(stdout);
 
     // Wait for events.
     for (;;) {
-        nfds = epoll_pwait(efd, epollevts, EPOLL_MAX_EVENTS, -1, &sigmask);
         //nfds = epoll_wait(efd, epollevts, EPOLL_MAX_EVENTS, -1);
+        nfds = epoll_pwait(efd, epollevts, EPOLL_MAX_EVENTS, -1, &sigmask);
+        pthread_sigmask(SIG_SETMASK, &origmask, NULL);
         if (nfds == EOF) {
             if (errno == EINTR) {
                 continue;
             }
-#if DEBUG || 1
-            perror("epoll_wait");
+#if DEBUG
+            perror("epoll_pwait");
 #endif
             goto out;
         }
@@ -719,13 +710,10 @@ int start_inotify_watcher(const char *name, const char *nodename, const char *po
             if ((epollevts[i].events & EPOLLERR) ||
                 (epollevts[i].events & EPOLLHUP) ||
                 (!(epollevts[i].events & EPOLLIN))) {
-#if DEBUG || 1
+#if DEBUG
                 fprintf(stderr, "epoll error\n");
 #endif
-                printf(" === !!! === close [epollevts[i].data.fd] => %d\n", epollevts[i].data.fd);
-                pthread_mutex_lock(&lock);
                 close(epollevts[i].data.fd);
-                pthread_mutex_unlock(&lock);
                 continue;
             }
 
@@ -746,23 +734,43 @@ int start_inotify_watcher(const char *name, const char *nodename, const char *po
     }
 
 out:
-#if DEBUG || 1
+#if DEBUG
     printf("  Listening for events stopped (pid = %d, sid = %d)\n", pid, sid);
     fflush(stdout);
 #endif
 
-    pthread_mutex_lock(&lock);
-    // Close `inotify` file descriptor.
-    close(watch->fd);
-    // Close `eventfd` file descriptor.
-    printf(" close [processevtfd] => %d\n", watch->processevtfd);
-    close(watch->processevtfd);
-    // Close `epoll` file descriptor.
-    close(efd);
-    pthread_mutex_unlock(&lock);
+    if (epoll_ctl(efd, EPOLL_CTL_DEL, watch->fd, NULL) == EOF) {
+#if DEBUG
+        perror("epoll_ctl");
+#endif
+    }
+    if (epoll_ctl(efd, EPOLL_CTL_DEL, watch->processevtfd, NULL) == EOF) {
+#if DEBUG
+        perror("epoll_ctl");
+#endif
+    }
 
+    // Close `inotify` file descriptor.
+    if (close(watch->fd) == EOF) {
+#if DEBUG
+        perror("close");
+#endif
+    }
+    // Close `eventfd` file descriptor.
+    if (close(watch->processevtfd) == EOF) {
+#if DEBUG
+        perror("close");
+#endif
+    }
+    // Close `epoll` file descriptor.
+    if (close(efd) == EOF) {
+#if DEBUG
+        perror("close");
+#endif
+    }
     // Free epoll event memory.
     free(epollevts);
+
     // Free watch cache.
     clear_watch(&watch);
 
@@ -773,7 +781,7 @@ out:
  * Sends the custom kill signal to break out of the `epoll` loop that is
  * listening for active `inotify` watch events.
  *
- * @param processfd
+ * @param pid
  */
 void send_watcher_kill_signal(const int pid) {
     int i;
@@ -781,12 +789,9 @@ void send_watcher_kill_signal(const int pid) {
         if (wlcache[i]->pid == pid) {
             uint64_t value = ARGUSNOTIFY_KILL;
             if (write(wlcache[i]->processevtfd, &value, sizeof(value)) == EOF) {
-#if DEBUG || 1
-                printf(" write [processfd] => %d\n", wlcache[i]->processevtfd);
+#if DEBUG
                 perror("write");
 #endif
-                // Close `eventfd` file descriptor.
-                //close(wlcache[i]->processevtfd);
             }
         }
     }

@@ -1,5 +1,4 @@
-/**
- * MIT License
+/** * MIT License
  *
  * Copyright (c) 2018 ClusterGarage
  *
@@ -42,7 +41,7 @@ int wlcachec = 0;
  *
  * @param watch
  */
-void clear_watch(struct arguswatch **watch) {
+void clear_watch(struct arguswatch **/*restrict*/ watch) {
     int i;
     if ((*watch)->slot == -1) {
         return;
@@ -84,7 +83,7 @@ int find_cached_slot(const int pid, const int sid) {
  *
  * @param watch
  */
-void check_cache_consistency(struct arguswatch **watch) {
+void check_cache_consistency(struct arguswatch **/*restrict*/ watch) {
     struct stat sb;
     int i;
 
@@ -126,7 +125,7 @@ out_increaseloop:
  * @param watch
  * @param index
  */
-static void remove_item_from_cache(struct arguswatch **watch, const int index) {
+static void remove_item_from_cache(struct arguswatch **/*restrict*/ watch, const int index) {
     int i;
     for (i = index; i < (*watch)->pathc - 1; ++i) {
         (*watch)->wd[i] = (*watch)->wd[i + 1];
@@ -190,7 +189,8 @@ void mark_cache_slot_empty(const int slot) {
     struct arguswatch *watch = calloc(1, sizeof(struct arguswatch));
     // Placeholder to pick open slot.
     watch->slot = -1;
-    wlcache[slot] = &*watch;
+    //wlcache[slot] = &*watch;
+    wlcache[slot] = watch;
 }
 
 /**
@@ -229,7 +229,7 @@ static int find_empty_cache_slot() {
  *
  * @param watch
  */
-void add_watch_to_cache(struct arguswatch **watch) {
+void add_watch_to_cache(struct arguswatch **/*restrict*/ watch) {
     int slot = find_empty_cache_slot();
     (*watch)->slot = slot;
     // Point this `wlcache` slot to `watch`.

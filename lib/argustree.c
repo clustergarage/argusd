@@ -148,7 +148,7 @@ static struct stat *find_root_stat(const struct arguswatch *const watch, const c
  * @param watch
  * @param path
  */
-void remove_root_path(struct arguswatch **watch, const char *const path) {
+void remove_root_path(struct arguswatch **/*restrict*/ watch, const char *const path) {
     char **p = find_root_path(*watch, path);
 #if DEBUG
     printf("%s: %s\n", __func__, path);
@@ -172,7 +172,7 @@ void remove_root_path(struct arguswatch **watch, const char *const path) {
     }
 }
 
-void find_replace_root_path(struct arguswatch **watch, const char *const path) {
+void find_replace_root_path(struct arguswatch **/*restrict*/ watch, const char *const path) {
     char procpath[PATH_MAX], foundpath[PATH_MAX], pidc[8];
     char **p = find_root_path(*watch, path);
     struct stat *rootstat = find_root_stat(*watch, path);
@@ -268,7 +268,7 @@ static bool should_ignore_path(const struct arguswatch *const watch, const char 
  * @param path
  * @return
  */
-static int watch_path(struct arguswatch **watch, const char *const path) {
+static int watch_path(struct arguswatch **/*restrict*/ watch, const char *const path) {
     int wd;
 
     // Dont add non-directories unless directly specified by `rootpaths` and
@@ -347,7 +347,7 @@ static int watch_path(struct arguswatch **watch, const char *const path) {
  * @param path
  * @return
  */
-static int watch_path_recursive(struct arguswatch **watch, const char *const path) {
+static int watch_path_recursive(struct arguswatch **/*restrict*/ watch, const char *const path) {
     /**
      * Function called by `nftw` to traverse a directory tree that adds a watch
      * for each directory in the tree. Each successful call to this function
@@ -406,7 +406,7 @@ static int watch_path_recursive(struct arguswatch **watch, const char *const pat
  *
  * @param watch
  */
-void watch_subtree(struct arguswatch **watch) {
+void watch_subtree(struct arguswatch **/*restrict*/ watch) {
     int i;
     for (i = 0; i < (*watch)->rootpathc; ++i) {
         if ((*watch)->recursive) {
@@ -433,7 +433,7 @@ void watch_subtree(struct arguswatch **watch) {
  * @param newpathpf
  * @param newname
  */
-void rewrite_cached_paths(struct arguswatch **watch, const char *const oldpathpf, const char *const oldname,
+void rewrite_cached_paths(struct arguswatch **/*restrict*/ watch, const char *const oldpathpf, const char *const oldname,
     const char *const newpathpf, const char *const newname) {
 
     char fullpath[PATH_MAX], newpf[PATH_MAX], newpath[PATH_MAX + 1];
@@ -474,7 +474,7 @@ void rewrite_cached_paths(struct arguswatch **watch, const char *const oldpathpf
  * @param path
  * @return
  */
-int remove_subtree(struct arguswatch **watch, const char *const path) {
+int remove_subtree(struct arguswatch **/*restrict*/ watch, const char *const path) {
     size_t len = strlen(path);
     int i, cnt = 0;
     // The argument we receive might be a pointer to a path string that is

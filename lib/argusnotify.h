@@ -45,8 +45,7 @@ static size_t process_next_inotify_event(struct arguswatch **watch, const struct
 static void process_inotify_events(struct arguswatch **watch, arguswatch_logfn logfn);
 int start_inotify_watcher(const char *name, const char *nodename, const char *podname, int pid, int sid,
     unsigned int pathc, const char *paths[], unsigned int ignorec, const char *ignores[], uint32_t mask, bool onlydir,
-    bool recursive, int maxdepth, bool followmove, /*const int processevtfd, */const char *tags, const char *logformat,
-    arguswatch_logfn logfn);
+    bool recursive, int maxdepth, bool followmove, const char *tags, const char *logformat, arguswatch_logfn logfn);
 void send_watcher_kill_signal(int pid);
 
 #endif

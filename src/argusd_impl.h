@@ -50,10 +50,9 @@ private:
     std::string getTagListFromSubject(std::shared_ptr<argus::ArgusWatcherSubject> subject) const;
     uint32_t getEventMaskFromSubject(std::shared_ptr<argus::ArgusWatcherSubject> subject) const;
     void createInotifyWatcher(std::string watcherName, std::string nodeName, std::string podName,
-        std::shared_ptr<argus::ArgusWatcherSubject> subject, int pid, int sid,
-        google::protobuf::RepeatedField<google::protobuf::int32> *procFds, std::string logFormat);
+        std::shared_ptr<argus::ArgusWatcherSubject> subject, int pid, int sid, int slen,
+        std::string logFormat);
     void sendKillSignalToWatcher(std::shared_ptr<argus::ArgusdHandle> watcher) const;
-    void eraseEventProcessfd(google::protobuf::RepeatedField<google::protobuf::int32> *eventProcessfds, int processfd) const;
 
     /**
      * Helper function to remove prepended container protocol from `containerId`
@@ -82,6 +81,7 @@ private:
     std::vector<std::shared_ptr<argus::ArgusdHandle>> watchers_;
     std::condition_variable cv_;
     std::mutex mux_;
+    bool done_;
 };
 } // namespace argusd
 
