@@ -58,17 +58,11 @@ static void reinitialize(struct arguswatch **watch) {
     bool rebuild = (*watch)->slot > -1;
 
     if (rebuild) {
-        if ((*watch)->fd != EOF &&
-            close((*watch)->fd) == EOF) {
-#if DEBUG
-            perror("close(watch->fd)");
-#endif
+        if ((*watch)->fd != EOF) {
+            close((*watch)->fd);
         }
-        if ((*watch)->processevtfd != EOF &&
-            close((*watch)->processevtfd) == EOF) {
-#if DEBUG
-            perror("close(watch->processevtfd)");
-#endif
+        if ((*watch)->processevtfd != EOF) {
+            close((*watch)->processevtfd);
         }
         // Free watch cache.
         clear_watch(watch);
@@ -644,14 +638,6 @@ int start_inotify_watcher(const char *name, const char *nodename, const char *po
     // Create an `inotify` instance and populate it with entries for paths.
     reinitialize(&watch);
     assert(watch->fd != EOF);
-    /*
-    if (watch->fd == EOF) {
-#if DEBUG
-        perror("reinitialize");
-#endif
-        goto out;
-    }
-    */
 
     // @TODO: document this
 
@@ -693,12 +679,6 @@ int start_inotify_watcher(const char *name, const char *nodename, const char *po
 #endif
     }
 
-    printf(" ### fd = %d; processeventfd = %d; epollfd = %d\n", watch->fd, watch->processevtfd, efd);
-    fflush(stdout);
-
-    printf(" === %s => DUMP_CACHE \n", __func__);
-    DUMP_CACHE(watch);
-
     // Wait for events.
     for (;;) {
         if ((nfds = epoll_pwait(efd, epollevts, EPOLL_MAX_EVENTS, -1, &sigmask)) == EOF) {
@@ -732,7 +712,6 @@ int start_inotify_watcher(const char *name, const char *nodename, const char *po
                 // Anonymous pipe events are available.
                 uint64_t value;
                 ssize_t len = read(epollevts[i].data.fd, &value, sizeof(uint64_t));
-                printf(" ### processevtfd = %d (value & ARGUSNOTIFY_KILL) = %d ### \n", watch->processevtfd, (bool)(value & ARGUSNOTIFY_KILL));
                 if (len != EOF &&
                     (value & ARGUSNOTIFY_KILL)) {
                     goto out;
@@ -749,41 +728,31 @@ out:
 
     if (epoll_ctl(efd, EPOLL_CTL_DEL, watch->fd, NULL) == EOF) {
 #if DEBUG
-        fprintf(stderr, "epoll_ctl(fd = %d)\n", watch->fd);
-        fflush(stderr);
-        perror("epoll_ctl(fd)");
+        perror("epoll_ctl");
 #endif
     }
     if (epoll_ctl(efd, EPOLL_CTL_DEL, watch->processevtfd, NULL) == EOF) {
 #if DEBUG
-        fprintf(stderr, "epoll_ctl(processevtfd = %d)\n", watch->processevtfd);
-        fflush(stderr);
-        perror("epoll_ctl(provessevtfd)");
+        perror("epoll_ctl");
 #endif
     }
 
     // Close `inotify` file descriptor.
     if (close(watch->fd) == EOF) {
 #if DEBUG
-        fprintf(stderr, "%s => close(fd = %d)\n", __func__, watch->fd);
-        fflush(stderr);
-        perror("close(fd)");
+        perror("close");
 #endif
     }
     // Close `eventfd` file descriptor.
     if (close(watch->processevtfd) == EOF) {
 #if DEBUG
-        fprintf(stderr, "%s => close(processevtfd = %d)\n", __func__, watch->processevtfd);
-        fflush(stderr);
-        perror("close(processevtfd)");
+        perror("close");
 #endif
     }
     // Close `epoll` file descriptor.
     if (close(efd) == EOF) {
 #if DEBUG
-        fprintf(stderr, "%s => close(efd = %d)\n", __func__, efd);
-        fflush(stderr);
-        perror("close(efd)");
+        perror("close");
 #endif
     }
     // Free epoll event memory.
@@ -808,9 +777,7 @@ void send_watcher_kill_signal(const int pid) {
             uint64_t value = ARGUSNOTIFY_KILL;
             if (write(wlcache[i]->processevtfd, &value, sizeof(value)) == EOF) {
 #if DEBUG
-                fprintf(stderr, "write(processevtfd = %d)\n", wlcache[i]->processevtfd);
-                fflush(stderr);
-                perror("write(processevtfd)");
+                perror("write");
 #endif
             }
         }

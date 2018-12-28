@@ -78,16 +78,20 @@ grpc::Status ArgusdImpl::CreateWatch(grpc::ServerContext *context [[maybe_unused
     auto watcher = findArgusdWatcherByPids(request->nodename(), pids);
     LOG(INFO) << (watcher == nullptr ? "Starting" : "Updating") << " `inotify` watcher ("
         << request->podname() << ":" << request->nodename() << ")";
+
     if (watcher != nullptr) {
-        // Reset done flag.
-        done_ = false;
         // Stop existing watcher polling.
         sendKillSignalToWatcher(watcher);
 
         // Wait for all inotify threads to be finished and cleaned up.
         std::unique_lock<std::mutex> lock(mux_);
         cv_.wait_until(lock, std::chrono::system_clock::now() + std::chrono::seconds(2), [=] {
-            return done_;
+            for (auto it : doneMap_) {
+                if (!it.second) {
+                    return false;
+                }
+            }
+            return true;
         });
     }
 
@@ -96,6 +100,9 @@ grpc::Status ArgusdImpl::CreateWatch(grpc::ServerContext *context [[maybe_unused
 
     for_each(pids.cbegin(), pids.cend(), [&](const int pid) {
         int i = 0;
+        // Reset done map flags.
+        doneMap_[pid] = false;
+
         for_each(request->subject().cbegin(), request->subject().cend(), [&](const argus::ArgusWatcherSubject subject) {
             // @TODO: Check if any watchers are started, if not, don't add to response.
             createInotifyWatcher(request->name(), response->nodename(), response->podname(),
@@ -156,6 +163,7 @@ grpc::Status ArgusdImpl::GetWatchState(grpc::ServerContext *context [[maybe_unus
             // Broken stream.
         }
     });
+
     return grpc::Status::OK;
 }
 
@@ -369,7 +377,7 @@ void ArgusdImpl::createInotifyWatcher(const std::string watcherName, const std::
         res.wait();
         if (res.valid()) {
             if (++cnt == subjectLen) {
-                done_ = true;
+                doneMap_[pid] = true;
             }
             // Notify the `condition_variable` of changes.
             cv_.notify_one();

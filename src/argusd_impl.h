@@ -26,6 +26,7 @@
 #define __ARGUSD_IMPL_H__
 
 #include <future>
+#include <map>
 #include <vector>
 
 #include <argus-proto/c++/argus.grpc.pb.h>
@@ -79,9 +80,9 @@ private:
     }
 
     std::vector<std::shared_ptr<argus::ArgusdHandle>> watchers_;
+    std::map<int, bool> doneMap_;
     std::condition_variable cv_;
     std::mutex mux_;
-    bool done_;
 };
 } // namespace argusd
 
