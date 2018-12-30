@@ -92,7 +92,7 @@ extern grpc::ServerWriter<argus::ArgusdMetricsHandle> *kMetricsWriter;
 #ifdef __cplusplus
 extern "C" {
 #endif
-const void logArgusWatchEvent(struct arguswatch_event *);
+void logArgusWatchEvent(struct arguswatch_event *);
 #ifdef __cplusplus
 }; // extern "C"
 #endif

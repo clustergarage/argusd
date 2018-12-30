@@ -79,11 +79,11 @@ static void reinitialize(struct arguswatch **watch) {
 #endif
         return;
     }
-    (*watch)->fd = fd;
 #if DEBUG
     printf("  new fd = %d\n", fd);
     fflush(stdout);
 #endif
+    (*watch)->fd = fd;
 
     // Begin traversing tree, or non-recursive directories.
     watch_subtree(watch);
@@ -94,6 +94,10 @@ static void reinitialize(struct arguswatch **watch) {
 #endif
         return;
     }
+#if DEBUG
+    printf("  new processevtfd = %d\n", processevtfd);
+    fflush(stdout);
+#endif
     (*watch)->processevtfd = processevtfd;
 
     slot = find_cached_slot((*watch)->pid, (*watch)->sid);

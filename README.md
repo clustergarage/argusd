@@ -35,9 +35,15 @@ git submodule foreach git pull origin master
 To build a local copy of the binary to run or troubleshoot with:
 
 ```
-mkdir build && cd $_
-cmake ..
-make -j$(nproc --all)
+cmake -H. -Bbuild
+cmake --build build
+```
+
+Or optionally specify another generator such as Ninja:
+
+```
+cmake -H. -Bbuild -GNinja
+cmake --build build
 ```
 
 Or if you wish to build as a Docker container and run this from a local registry:

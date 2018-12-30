@@ -171,6 +171,14 @@ void remove_root_path(struct arguswatch **watch, const char *const path) {
     }
 }
 
+/**
+ * Find moved path by locating it in /proc/[pid]/root by previously-stored
+ * inode value. If found, update root path in cached watch.
+ *
+ * @param watch
+ * @param path
+ * @return
+ */
 void find_replace_root_path(struct arguswatch **watch, const char *const path) {
     char procpath[PATH_MAX], foundpath[PATH_MAX], pidc[8];
     char **p;

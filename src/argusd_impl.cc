@@ -22,8 +22,6 @@
  * SOFTWARE.
  */
 
-#include "argusd_impl.h"
-
 #include <poll.h>
 #include <sys/eventfd.h>
 #include <sys/inotify.h>
@@ -44,6 +42,8 @@
 #include <grpc/grpc.h>
 #include <grpc++/server_context.h>
 #include <libcontainer/container_util.h>
+
+#include "argusd_impl.h"
 
 extern "C" {
 #include <lib/argusnotify.h>
@@ -369,8 +369,8 @@ void ArgusdImpl::createInotifyWatcher(const std::string watcherName, const std::
     const std::string logFormat) {
 
     std::packaged_task<int(const char *, const char *, const char *, int, int, unsigned int, const char **,
-        unsigned int, const char **, uint32_t, uint32_t, int, const char *, const char *,
-        arguswatch_logfn)> task(start_inotify_watcher);
+        unsigned int, const char **, uint32_t, uint32_t, int, const char *, const char *, arguswatch_logfn)>
+        task(start_inotify_watcher);
     std::shared_future<int> result(task.get_future());
     std::thread taskThread(std::move(task),
         convertStringToCString(watcherName),
@@ -422,7 +422,7 @@ void ArgusdImpl::sendKillSignalToWatcher(std::shared_ptr<argus::ArgusdHandle> wa
 #ifdef __cplusplus
 extern "C" {
 #endif
-const void logArgusWatchEvent(struct arguswatch_event *awevent) {
+void logArgusWatchEvent(struct arguswatch_event *awevent) {
     /**
      * Default logging format.
      *

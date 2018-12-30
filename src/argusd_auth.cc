@@ -22,12 +22,12 @@
  * SOFTWARE.
  */
 
-#include "argusd_auth.h"
-
 #include <string>
 
 #include <grpc/grpc.h>
 #include <grpc++/grpc++.h>
+
+#include "argusd_auth.h"
 
 namespace argusd {
 /**

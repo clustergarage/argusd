@@ -102,7 +102,7 @@ struct arguswatch_event {
     bool is_dir;
 };
 
-typedef const void (*arguswatch_logfn)(struct arguswatch_event *);
+typedef void (*arguswatch_logfn)(struct arguswatch_event *);
 
 extern struct arguswatch **wlcache; // Array of cached watches.
 extern int wlcachec;
