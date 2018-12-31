@@ -31,7 +31,7 @@
 
 #include "argusutil.h"
 
-#define EPOLL_MAX_EVENTS 32
+#define EPOLL_MAX_EVENTS 64
 #define ARGUSNOTIFY_KILL SIGKILL
 
 static void reinitialize(struct arguswatch **watch);
@@ -41,6 +41,8 @@ static void process_inotify_events(struct arguswatch **watch, arguswatch_logfn l
 int start_inotify_watcher(const char *name, const char *nodename, const char *podname, int pid, int sid,
     unsigned int pathc, const char *paths[], unsigned int ignorec, const char *ignores[], uint32_t mask, uint32_t flags,
     int maxdepth, const char *tags, const char *logformat, arguswatch_logfn logfn);
+void add_epoll_ctl_fds(struct arguswatch **watch);
 void send_watcher_kill_signal(int pid);
+void alarm_handler(int sig);
 
 #endif

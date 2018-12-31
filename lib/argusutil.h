@@ -28,6 +28,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
+#include <sys/epoll.h>
 #include <unistd.h>
 
 #ifndef DEBUG
@@ -66,16 +67,17 @@
             (watch)->paths[i]);                                                          \
     }                                                                                    \
     printf("    $$   event_mask = %d\n", (watch)->event_mask);                           \
-    printf("    $$   only_dir = %d\n", (watch)->only_dir);                               \
-    printf("    $$   recursive = %d\n", (watch)->recursive);                             \
-    if ((watch)->recursive) {                                                            \
+    printf("    $$   only_dir = %d\n", ((watch)->flags & AW_ONLYDIR));                   \
+    printf("    $$   recursive = %d\n", ((watch)->flags & AW_RECURSIVE));                \
+    if ((watch)->flags & AW_RECURSIVE) {                                                 \
         printf("    $$     max_depth = %d\n", (watch)->max_depth);                       \
     }                                                                                    \
-    printf("    $$   follow_move = %d\n", (watch)->follow_move);                         \
+    printf("    $$   follow_move = %d\n", ((watch)->flags & AW_FOLLOW));                 \
     fflush(stdout);                                                                      \
 } while(0)
 
 struct arguswatch {
+    struct epoll_event epollevt[2];   // `epoll` structures for polling watchers.
     const char *name;                 // Name of ArgusWatcher.
     const char *node_name, *pod_name; // Name of node, pod in which process is running.
     const char *tags;                 // Custom tags for printing ArgusWatcher event.
@@ -91,7 +93,7 @@ struct arguswatch {
     uint32_t event_mask;              // Event mask for `inotify`.
     uint32_t flags;                   // Flags for ArgusWatcher.
     int pid, sid, slot;               // PID, Subject ID, `wlcache` slot.
-    int fd, processevtfd;             // `inotify` file descriptor, anonymous pipe to send watch kill signal.
+    int fd, processevtfd, efd;        // `inotify` fd, anonymous pipe to send watch kill signal, `epoll` fd.
     int max_depth;                    // Max `nftw` depth to recurse through.
 };
 

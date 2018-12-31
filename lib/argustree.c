@@ -38,6 +38,10 @@
 #include "arguscache.h"
 #include "argusutil.h"
 
+static struct arguswatch **watch_;
+static struct stat *rootstat_;
+static char foundpath_[PATH_MAX], pidc_[8];
+
 /**
  * Validate watch root paths are sanity checked before performing any
  * operations on them.
@@ -171,6 +175,14 @@ void remove_root_path(struct arguswatch **watch, const char *const path) {
     }
 }
 
+int traverse_root(const char *path, const struct stat *sb, int tflag, struct FTW *ftwbuf) {
+    if (rootstat_->st_ino == sb->st_ino) {
+        snprintf(foundpath_, sizeof(foundpath_), "/proc/%d/root%s", (*watch_)->pid,
+            path + (strlen(pidc_) + 13));
+        return FTW_STOP;
+    }
+    return FTW_CONTINUE;
+}
 /**
  * Find moved path by locating it in /proc/[pid]/root by previously-stored
  * inode value. If found, update root path in cached watch.
@@ -180,7 +192,7 @@ void remove_root_path(struct arguswatch **watch, const char *const path) {
  * @return
  */
 void find_replace_root_path(struct arguswatch **watch, const char *const path) {
-    char procpath[PATH_MAX], foundpath[PATH_MAX], pidc[8];
+    char procpath[PATH_MAX];
     char **p;
     struct stat *rootstat;
 
@@ -199,16 +211,11 @@ void find_replace_root_path(struct arguswatch **watch, const char *const path) {
         return;
     }
     snprintf(procpath, sizeof(procpath), "/proc/%d/root/.", (*watch)->pid);
-    snprintf(pidc, sizeof(pidc), "%d", (*watch)->pid);
+    snprintf(pidc_, sizeof(pidc_), "%d", (*watch)->pid);
 
-    int traverse_root(const char *path, const struct stat *sb, int tflag, struct FTW *ftwbuf) {
-        if (rootstat->st_ino == sb->st_ino) {
-            snprintf(foundpath, sizeof(foundpath), "/proc/%d/root%s", (*watch)->pid,
-                path + (strlen(pidc) + 13));
-            return FTW_STOP;
-        }
-        return FTW_CONTINUE;
-    }
+    watch_ = watch;
+    rootstat_ = rootstat;
+    foundpath_[0] = '\0';
     if (nftw(procpath, traverse_root, 20, FTW_ACTIONRETVAL | FTW_PHYS) == EOF) {
 #if DEBUG
         printf("nftw: %s: %s (directory probably deleted before we could watch)\n",
@@ -217,25 +224,26 @@ void find_replace_root_path(struct arguswatch **watch, const char *const path) {
 #endif
     }
 
+    if (foundpath_[0] == '\0') {
 #if DEBUG
-    printf("%s: %s -> %s\n", __func__, path, foundpath);
-    fflush(stdout);
-#endif
-    if (p == NULL) {
-#if DEBUG
-        printf("%s: path not found!\n", __func__);
+        printf("%s: moved path not found!\n", __func__);
         fflush(stdout);
 #endif
         return;
     }
 
-    if ((*p = realloc(*p, sizeof(foundpath) + 1)) == NULL) {
+#if DEBUG
+    printf("%s: %s -> %s\n", __func__, path, foundpath_);
+    fflush(stdout);
+#endif
+
+    if ((*p = realloc(*p, sizeof(foundpath_) + 1)) == NULL) {
 #if DEBUG
         perror("realloc");
 #endif
     }
     free(*p);
-    *p = strdup(foundpath);
+    *p = strdup(foundpath_);
 }
 
 /**
@@ -353,6 +361,44 @@ static int watch_path(struct arguswatch **watch, const char *const path) {
 }
 
 /**
+ * Function called by `nftw` to traverse a directory tree that adds a watch
+ * for each directory in the tree. Each successful call to this function
+ * should return 0 to indicate to `nftw` that the tree traversal should
+ * continue.
+ *
+ * @param path
+ * @param sb
+ * @param tflag
+ * @param ftwbuf
+ * @return
+ */
+int traverse_tree(const char *path, const struct stat *sb, int tflag, struct FTW *ftwbuf) {
+    int i;
+    if (((*watch_)->flags & AW_ONLYDIR) &&
+        !S_ISDIR(sb->st_mode)) {
+        // Ignore nondirectory files.
+        return FTW_CONTINUE;
+    }
+    // Stop recursing subtree if path in ignores list.
+    for (i = 0; i < (*watch_)->ignorec; ++i) {
+        if (strcmp(&path[ftwbuf->base], (*watch_)->ignores[i]) == 0) {
+            return FTW_SKIP_SUBTREE;
+        }
+    }
+    // Stop recursing siblings if reached max depth.
+    if ((*watch_)->max_depth &&
+        ftwbuf->level + 1 > (*watch_)->max_depth) {
+        return FTW_SKIP_SIBLINGS;
+    }
+
+#if DEBUG
+    printf("    traverse_tree: %s; level = %d\n", path, ftwbuf->level);
+    fflush(stdout);
+#endif
+    return watch_path(watch_, path);
+}
+
+/**
  * Add `path` to the watch list of the `inotify` file descriptor. The process
  * is recursive: watch items are also created for all of the subdirectories of
  * `path`. Returns number of watches/cache entries added for this subtree.
@@ -362,48 +408,11 @@ static int watch_path(struct arguswatch **watch, const char *const path) {
  * @return
  */
 static int watch_path_recursive(struct arguswatch **watch, const char *const path) {
-    /**
-     * Function called by `nftw` to traverse a directory tree that adds a watch
-     * for each directory in the tree. Each successful call to this function
-     * should return 0 to indicate to `nftw` that the tree traversal should
-     * continue.
-     *
-     * @param path
-     * @param sb
-     * @param tflag
-     * @param ftwbuf
-     * @return
-     */
-    int traverse_tree(const char *path, const struct stat *sb, int tflag, struct FTW *ftwbuf) {
-        int i;
-        if (((*watch)->flags & AW_ONLYDIR) &&
-            !S_ISDIR(sb->st_mode)) {
-            // Ignore nondirectory files.
-            return FTW_CONTINUE;
-        }
-        // Stop recursing subtree if path in ignores list.
-        for (i = 0; i < (*watch)->ignorec; ++i) {
-            if (strcmp(&path[ftwbuf->base], (*watch)->ignores[i]) == 0) {
-                return FTW_SKIP_SUBTREE;
-            }
-        }
-        // Stop recursing siblings if reached max depth.
-        if ((*watch)->max_depth &&
-            ftwbuf->level + 1 > (*watch)->max_depth) {
-            return FTW_SKIP_SIBLINGS;
-        }
-
-#if DEBUG
-        printf("    traverse_tree: %s; level = %d\n", path, ftwbuf->level);
-        fflush(stdout);
-#endif
-        return watch_path(watch, path);
-    }
-
     // Use FTW_PHYS to avoid following soft links to directories (which could
     // lead us in circles). By the time we come to process `path`, it may
     // already have been deleted, so we log errors from `nftw`, but keep on
     // going.
+    watch_ = watch;
     if (nftw(path, traverse_tree, 20, FTW_ACTIONRETVAL | FTW_PHYS) == EOF) {
 #if DEBUG
         printf("nftw: %s: %s (directory probably deleted before we could watch)\n",

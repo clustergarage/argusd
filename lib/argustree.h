@@ -31,9 +31,11 @@ void validate_root_paths(struct arguswatch *watch);
 char **find_root_path(const struct arguswatch *watch, const char *path);
 static struct stat *find_root_stat(const struct arguswatch *watch, const char *path);
 void remove_root_path(struct arguswatch **watch, const char *path);
+int traverse_root(const char *path, const struct stat *sb, int tflag, struct FTW *ftwbuf);
 void find_replace_root_path(struct arguswatch **watch, const char *path);
 static bool should_ignore_path(const struct arguswatch *watch, const char *path);
 static int watch_path(struct arguswatch **watch, const char *path);
+int traverse_tree(const char *path, const struct stat *sb, int tflag, struct FTW *ftwbuf);
 static int watch_path_recursive(struct arguswatch **watch, const char *path);
 void watch_subtree(struct arguswatch **watch);
 void rewrite_cached_paths(struct arguswatch **watch, const char *oldpathpf, const char *oldname,

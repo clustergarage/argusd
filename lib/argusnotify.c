@@ -88,7 +88,7 @@ static void reinitialize(struct arguswatch **watch) {
     // Begin traversing tree, or non-recursive directories.
     watch_subtree(watch);
 
-    if ((processevtfd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK | EFD_SEMAPHORE)) == EOF) {
+    if ((processevtfd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK)) == EOF) {
 #if DEBUG
         perror("eventfd");
 #endif
@@ -99,6 +99,10 @@ static void reinitialize(struct arguswatch **watch) {
     fflush(stdout);
 #endif
     (*watch)->processevtfd = processevtfd;
+
+    if (rebuild) {
+        add_epoll_ctl_fds(watch);
+    }
 
     slot = find_cached_slot((*watch)->pid, (*watch)->sid);
     if (slot == -1) {
@@ -447,12 +451,9 @@ static void process_inotify_events(struct arguswatch **watch, arguswatch_logfn l
     size_t evtlen;
     int i;
     bool first = true;
+
     struct sigaction sa;
     sigemptyset(&sa.sa_mask);
-    void alarm_handler(int sig) {
-        // Just interrupt `read`.
-        return;
-    }
     // SIGALRM handler is designed simply to interrupt `read`.
     sa.sa_handler = alarm_handler;
     sa.sa_flags = 0;
@@ -637,13 +638,12 @@ int start_inotify_watcher(const char *name, const char *nodename, const char *po
     // Create an `inotify` instance and populate it with entries for paths.
     reinitialize(&watch);
     assert(watch->fd != EOF);
+    assert(watch->processevtfd != EOF);
 
     // @TODO: document this
 
-    struct epoll_event epollevt[2];
     struct epoll_event *epollevts; // Buffer where events are returned.
-    uint32_t eflags = EPOLLIN | EPOLLET | EPOLLERR | EPOLLHUP;
-    int efd, nfds, i;
+    int nfds, i;
     if ((epollevts = calloc(EPOLL_MAX_EVENTS, sizeof(struct epoll_event))) == NULL) {
 #if DEBUG
         perror("calloc");
@@ -654,33 +654,17 @@ int start_inotify_watcher(const char *name, const char *nodename, const char *po
     sigaddset(&sigmask, SIGCHLD);
     pthread_sigmask(SIG_SETMASK, &sigmask, &origmask);
 
-    if ((efd = epoll_create1(EPOLL_CLOEXEC)) == EOF) {
+    if ((watch->efd = epoll_create1(EPOLL_CLOEXEC)) == EOF) {
 #if DEBUG
         perror("epoll_create");
 #endif
         goto out;
     }
-
-    // `inotify` input.
-    epollevt[0].data.fd = watch->fd;
-    epollevt[0].events = eflags;
-    if (epoll_ctl(efd, EPOLL_CTL_ADD, watch->fd, &epollevt[0]) == EOF) {
-#if DEBUG
-        perror("epoll_ctl");
-#endif
-    }
-    // Anonymous pipe for manual kill.
-    epollevt[1].data.fd = watch->processevtfd;
-    epollevt[1].events = eflags;
-    if (epoll_ctl(efd, EPOLL_CTL_ADD, watch->processevtfd, &epollevt[1]) == EOF) {
-#if DEBUG
-        perror("epoll_ctl");
-#endif
-    }
+    add_epoll_ctl_fds(&watch);
 
     // Wait for events.
     for (;;) {
-        if ((nfds = epoll_pwait(efd, epollevts, EPOLL_MAX_EVENTS, -1, &sigmask)) == EOF) {
+        if ((nfds = epoll_pwait(watch->efd, epollevts, EPOLL_MAX_EVENTS, -1, &sigmask)) == EOF) {
             if (errno == EINTR) {
                 continue;
             }
@@ -725,12 +709,12 @@ out:
     fflush(stdout);
 #endif
 
-    if (epoll_ctl(efd, EPOLL_CTL_DEL, watch->fd, NULL) == EOF) {
+    if (epoll_ctl(watch->efd, EPOLL_CTL_DEL, watch->fd, NULL) == EOF) {
 #if DEBUG
         perror("epoll_ctl");
 #endif
     }
-    if (epoll_ctl(efd, EPOLL_CTL_DEL, watch->processevtfd, NULL) == EOF) {
+    if (epoll_ctl(watch->efd, EPOLL_CTL_DEL, watch->processevtfd, NULL) == EOF) {
 #if DEBUG
         perror("epoll_ctl");
 #endif
@@ -749,7 +733,7 @@ out:
 #endif
     }
     // Close `epoll` file descriptor.
-    if (close(efd) == EOF) {
+    if (close(watch->efd) == EOF) {
 #if DEBUG
         perror("close");
 #endif
@@ -761,6 +745,31 @@ out:
     clear_watch(&watch);
 
     return errno ? EXIT_FAILURE : EXIT_SUCCESS;
+}
+
+/**
+ * Add `inotify` and `eventfd` file descriptors to the `epoll` definition.
+ *
+ * @param watch
+ */
+void add_epoll_ctl_fds(struct arguswatch **watch) {
+    // `inotify` input.
+    (*watch)->epollevt[0].data.fd = (*watch)->fd;
+    (*watch)->epollevt[0].events = EPOLLIN;
+    if (epoll_ctl((*watch)->efd, EPOLL_CTL_ADD, (*watch)->fd, &(*watch)->epollevt[0]) == EOF) {
+#if DEBUG
+        perror("epoll_ctl");
+#endif
+    }
+
+    // Anonymous pipe for manual kill.
+    (*watch)->epollevt[1].data.fd = (*watch)->processevtfd;
+    (*watch)->epollevt[1].events = EPOLLIN;
+    if (epoll_ctl((*watch)->efd, EPOLL_CTL_ADD, (*watch)->processevtfd, &(*watch)->epollevt[1]) == EOF) {
+#if DEBUG
+        perror("epoll_ctl");
+#endif
+    }
 }
 
 /**
@@ -781,4 +790,14 @@ void send_watcher_kill_signal(const int pid) {
             }
         }
     }
+}
+
+/**
+ * SIGALRM handler is designed simply to interrupt `read`.
+ *
+ * @param sig
+ */
+void alarm_handler(int sig) {
+    // Just interrupt `read`.
+    return;
 }

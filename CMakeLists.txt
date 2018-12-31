@@ -72,7 +72,6 @@ FetchContent_GetProperties(glog)
 if(NOT glog_POPULATED)
   FetchContent_Populate(glog)
   set(WITH_GFLAGS OFF CACHE BOOL "" FORCE)
-  set(CMAKE_CXX_FLAGS "-Wl,--eh-frame-hdr" CACHE BOOL "" FORCE)
   add_subdirectory(${glog_SOURCE_DIR} ${glog_BINARY_DIR} EXCLUDE_FROM_ALL)
 endif()
 
@@ -145,7 +144,7 @@ target_link_libraries(argusd
   libprotobuf ssl crypto
 )
 
-if(CMAKE_BUILD_TYPE STREQUAL Debug)
+if(CMAKE_BUILD_TYPE STREQUAL Release)
   # Strip all symbols from built binary.
   add_custom_command(TARGET argusd POST_BUILD
     COMMAND strip -s $<TARGET_FILE:argusd>)
