@@ -10,7 +10,6 @@ set(PACKAGE_VERSION_MINOR "5")
 set(PACKAGE_VERSION_PATCH "0")
 set(PACKAGE_VERSION "${PACKAGE_VERSION_MAJOR}.${PACKAGE_VERSION_MINOR}.${PACKAGE_VERSION_PATCH}")
 set(PACKAGE_STRING "${PACKAGE_NAME} ${PACKAGE_VERSION}")
-set(PACKAGE_TARNAME "${PACKAGE_NAME}-${PACKAGE_VERSION}")
 set(PACKAGE_DESCRIPTION "Argus Daemon - File Integrity Monitoring for Kubernetes")
 set(PACKAGE_URL "https://clustergarage.io/argus")
 set(PACKAGE_BUGREPORT "https://github.com/clustergarage/argusd/issues")
@@ -58,8 +57,6 @@ if(NOT grpc_POPULATED)
   set(INSTALL_HEADERS ON CACHE BOOL "" FORCE)
   set(INSTALL_SHARED_LIBS OFF CACHE BOOL "" FORCE)
   set(INSTALL_STATIC_LIBS ON CACHE BOOL "" FORCE)
-  # openssl
-  set(OPENSSL_USE_STATIC_LIBS ON CACHE BOOL "" FORCE)
   # grpc
   set(gRPC_BUILD_CSHARP_EXT OFF CACHE BOOL "" FORCE)
   set(gRPC_BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -148,8 +145,8 @@ target_link_libraries(argusd
   libprotobuf ssl crypto
 )
 
-# Strip all symbols from built binary.
 if(CMAKE_BUILD_TYPE STREQUAL Debug)
+  # Strip all symbols from built binary.
   add_custom_command(TARGET argusd POST_BUILD
     COMMAND strip -s $<TARGET_FILE:argusd>)
 endif()

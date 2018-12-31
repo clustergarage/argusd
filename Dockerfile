@@ -9,12 +9,12 @@ ENV GRPC_HEALTH_PROBE_VERSION v0.2.0
 # other than `build`.
 WORKDIR /opt/argusd
 COPY . /opt/argusd
-RUN cmake -DCMAKE_C_COMPILER=gcc \
-    -DCMAKE_CXX_COMPILER=g++ \
-    -DCMAKE_BUILD_TYPE=Release \
-    -H. \
+RUN cmake -H. \
     -Bdockerbuild \
-    -GNinja && \
+    -GNinja \
+    -DCMAKE_C_COMPILER=gcc \
+    -DCMAKE_CXX_COMPILER=g++ \
+    -DCMAKE_BUILD_TYPE=Release && \
   cmake --build dockerbuild
 # Include grpc_health_probe for K8s liveness/readiness checks.
 RUN wget -qO/bin/grpc_health_probe \

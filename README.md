@@ -32,21 +32,53 @@ git submodule foreach git pull origin master
 
 ### Building
 
-To build a local copy of the binary to run or troubleshoot with:
+#### Local Build
+
+To build a local copy of the binary to run or troubleshoot with, the bare minimum command to configure the `cmake` build:
 
 ```
 cmake -H. -Bbuild
-cmake --build build
 ```
 
-Or optionally specify another generator such as Ninja:
+Optionally specify another generator such as `Ninja`:
 
 ```
 cmake -H. -Bbuild -GNinja
+```
+
+Optionally specify a `Debug` build with additional debug options and symbols:
+
+```
+cmake -H. -Bbuild \
+  -DCMAKE_BUILD_TYPE=Debug
+```
+
+Optionally specify another compiler such as `gcc`/`g++`, `clang`, `llvm`, etc.:
+
+```
+cmake -H. -Bbuild \
+  -DCMAKE_C_COMPILER=gcc \
+  -DCMAKE_CXX_COMPILER=g++
+```
+
+Finally run the build with:
+
+```
 cmake --build build
 ```
 
-Or if you wish to build as a Docker container and run this from a local registry:
+Optionally specify the number of cores to run the build with:
+
+```
+# use 4 cores explicitly
+cmake --build build -j 4
+# use the maximum amount of cores available
+cmake --build build -j $(nproc --all)
+```
+
+#### Docker Build
+
+If you wish to build as a Docker container and run this from a local registry:
 
 ```
 docker build -t clustergarage/argusd .
