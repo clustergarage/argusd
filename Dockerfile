@@ -1,9 +1,8 @@
 FROM ubuntu:bionic as builder
 RUN apt-get update && \
-  apt-get install -y g++ gcc git golang-go ninja-build perl tar wget
-RUN wget -qO- https://cmake.org/files/v3.12/cmake-3.12.1-Linux-x86_64.tar.gz | \
-  tar --strip-components=1 -xz -C /usr/local
-RUN cmake --version
+  apt-get install -y g++ gcc git golang-go ninja-build perl tar wget && \
+  wget -qO- https://cmake.org/files/v3.12/cmake-3.12.1-Linux-x86_64.tar.gz | \
+    tar --strip-components=1 -xz -C /usr/local
 ENV GRPC_HEALTH_PROBE_VERSION v0.2.0
 # Do this in a new folder `dockerbuild`. `build` is ignored via .dockerignore
 # for builds outside docker, so we need to make sure we name this something
@@ -12,6 +11,7 @@ WORKDIR /opt/argusd
 COPY . /opt/argusd
 RUN cmake -DCMAKE_C_COMPILER=gcc \
     -DCMAKE_CXX_COMPILER=g++ \
+    -DCMAKE_BUILD_TYPE=Release \
     -H. \
     -Bdockerbuild \
     -GNinja && \
